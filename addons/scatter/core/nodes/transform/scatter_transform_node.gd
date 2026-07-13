@@ -24,7 +24,7 @@ func get_color() -> Color:
 	return Color("a376bc")
 
 
-func evaluate(context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterValue:
+func evaluate_value(context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterValue:
 	var buffer := input_instances(context, inputs)
 	ScatterTransformOps.apply_transform(buffer, position, rotation, scale, space, context.target)
 	return buffer

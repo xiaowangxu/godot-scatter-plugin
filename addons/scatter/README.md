@@ -1,40 +1,59 @@
 # Scatter for Godot 4.7+
 
-Scatter is an editor-only visual instance-data builder attached directly to a native `MultiMeshInstance3D`. It adds no scene nodes. A typed `ScatterGraph` is stored as metadata and Build writes the result to the native `MultiMesh`; at runtime the saved buffer is used without evaluating the graph.
+Scatter is an editor-only instance-data builder attached directly to native `MultiMeshInstance3D`. It adds no scene nodes and performs no graph evaluation at runtime.
 
 ## Workflow
 
-1. Select a `MultiMeshInstance3D` and open the Scatter bottom panel.
-2. Connect Region and Placement streams to one or more Scatter Group nodes.
-3. Connect each Scatter Set to Final Output.
-4. Build the graph, or enable Auto Build.
+1. Select a `MultiMeshInstance3D`.
+2. Use **Configure Scatter** for a new recipe, or **Load Recipe** to reference a `.tres` graph.
+3. Connect a Shape to Random, Grid, or Poisson; connect Path to a Path sampler; connect resulting Instances to Final Output.
+4. Build to write the MultiMesh buffer. Use **Save Recipe** or Ctrl+S to persist the working graph. Editing never silently saves the recipe.
+5. Detach removes only metadata. It preserves the recipe resource and the generated MultiMesh buffer.
 
-The graph editor uses Godot's native `GraphEdit` and `GraphNode` styling. It supports selection, Delete, right-click commands, copy/cut/paste, duplicate, connection editing, node Enable controls, a minimap, and direct-property UndoRedo.
+Final Output accepts ordered variadic Instances inputs directly. Scatter Group and Scatter Set no longer exist.
 
-## Node library
+## Value system
 
-- Region: Box, Sphere, Path, Paint, Union, Intersection, and Subtract.
-- Placement: Random, Grid, Poisson, random/even/continuous edge placement, Single, and Merge Placement.
-- Transform: Array, Transform, Position, Rotation, Scale, Random Transform, Random Rotation, Look At, Snap, Relax, Clusterize, and Project.
-- Filter and data: Remove Outside, Remove Random, Proxy Graph, Random Color, and Random Custom Data.
-- Output: Scatter Group and Final Output. Final Output accepts ordered, variadic Scatter Sets.
+Ports use stable `StringName` value types and a multiple-parent type registry:
 
-Selecting a Path node makes it the active 3D viewport editor. Its native viewport toolbar switches between moving handles, adding points, deleting points, and closing the path; selecting another graph node or clearing the selection exits path editing. Paint Region follows the same selection-driven activation model and stores typed stroke resources. Its native viewport toolbar contains Paint/Erase modes, brush radius, layer clearing, and the collision mask; the viewport provides brush preview, persistent region outlines, and UndoRedo. Proxy Graph can consume another native `MultiMeshInstance3D` recipe and detects dependency cycles.
+```text
+value
+├── shape
+│   └── region
+│       └── regular_region
+├── path
+├── direct_sampleable
+│   ├── regular_region
+│   └── path
+└── instances
+```
 
-## Public extension API
+Paths are one-dimensional arc-length curves. Path Tube Region converts a Path to a volume Shape. Boolean operators accept Shape and return Shape, so their Random sampling uses deterministic rejection sampling over the combined local AABB. Regular Box and Sphere regions use exact direct sampling. Poisson uses deterministic 3D Bridson sampling.
 
-Custom addons can register model and editor-view scripts without modifying Scatter:
+Every stored instance transform is MultiMesh Local. Shape and Path sources may be authored in Global or Local space; Global values are frozen into target-local values during evaluation. Instance space is available only on Instances transform nodes.
+
+## Extension API
+
+External addons register a model, GraphNode view, and editor extension together:
 
 ```gdscript
 func _enter_tree() -> void:
-    ScatterNodeRegistry.register_node(MyScatterNode, MyScatterNodeView)
+    ScatterValueTypeRegistry.register_type(&"my_value", [&"value"], Color.CORNFLOWER_BLUE)
+    ScatterExtensionRegistry.register_node(MyNode, MyNodeView, MyNodeEditorExtension)
 
 func _exit_tree() -> void:
-    ScatterNodeRegistry.unregister_node(&"my_scatter_node")
+    ScatterExtensionRegistry.unregister_node(&"my_node")
+    ScatterValueTypeRegistry.unregister_type(&"my_value")
 ```
 
-`ScatterNode` owns typed parameters, stable `StringName` ports, validation, evaluation, disabled behavior, seed policy, and preview geometry. `ScatterNodeView` owns only GraphNode layout and editor interaction, including overridable viewport-tool activation hooks. Core code has no Editor API dependency.
+`ScatterGraphCompiler` validates ports, subtype assignment, variadic order, the unique Final Output, and cycles before producing a stable topological plan. Each node evaluates once per Build and may return multiple named outputs through `ScatterNodeOutputs`. Structured warnings allow partial output; errors prevent MultiMesh writes.
 
-Recipes are native `.tres` `ScatterGraph` resources. This architecture intentionally does not import the earlier Dictionary recipe formats.
+The editor extension controls the selected-node gizmo and optional viewport tool. The shared gizmo host does not branch on concrete node types.
 
-See `res://addons/scatter/demo/scatter_demo.tscn` for a saved native MultiMesh buffer and typed recipe.
+## Tests
+
+Run the headless suite with Godot 4.7:
+
+```text
+godot --headless --path . --script res://addons/scatter/tests/run_all.gd
+```

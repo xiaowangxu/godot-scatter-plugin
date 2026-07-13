@@ -3,10 +3,9 @@ class_name ScatterNodeRegistry
 extends RefCounted
 
 static var _node_scripts: Dictionary[StringName, Script] = {}
-static var _view_scripts: Dictionary[StringName, Script] = {}
 
 
-static func register_node(node_script: Script, view_script: Script = null) -> bool:
+static func register_node(node_script: Script) -> bool:
 	if node_script == null or not node_script.can_instantiate():
 		return false
 	var node = node_script.new()
@@ -16,35 +15,20 @@ static func register_node(node_script: Script, view_script: Script = null) -> bo
 	if type_id.is_empty() or _node_scripts.has(type_id):
 		return false
 	_node_scripts[type_id] = node_script
-	if view_script != null:
-		_view_scripts[type_id] = view_script
-	return true
-
-
-static func register_view(type_id: StringName, view_script: Script) -> bool:
-	if not _node_scripts.has(type_id) or view_script == null:
-		return false
-	_view_scripts[type_id] = view_script
 	return true
 
 
 static func unregister_node(type_id: StringName) -> void:
 	_node_scripts.erase(type_id)
-	_view_scripts.erase(type_id)
 
 
 static func clear() -> void:
 	_node_scripts.clear()
-	_view_scripts.clear()
 
 
 static func create_node(type_id: StringName) -> ScatterNode:
 	var script: Script = _node_scripts.get(type_id)
 	return script.new() as ScatterNode if script != null else null
-
-
-static func get_view_script(type_id: StringName) -> Script:
-	return _view_scripts.get(type_id)
 
 
 static func type_ids() -> Array[StringName]:

@@ -19,7 +19,7 @@ func get_color() -> Color:
 	return Color("4b9b72")
 
 
-func evaluate(context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterValue:
+func evaluate_value(context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterValue:
 	var buffer := input_instances(context, inputs)
 	ScatterCreationOps.append_single(buffer, offset, rotation, scale, context.maximum_instances)
 	return buffer

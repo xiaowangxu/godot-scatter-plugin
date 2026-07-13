@@ -2,6 +2,7 @@ extends SceneTree
 
 
 func _init() -> void:
+	ScatterBuiltinRegistry.register_all()
 	var core_files := _gd_files("res://addons/scatter/core")
 	var editor_files := _gd_files("res://addons/scatter/editor")
 	for path in core_files:
@@ -17,8 +18,11 @@ func _init() -> void:
 	assert(han.compile("[\\x{4E00}-\\x{9FFF}]") == OK)
 	for path in editor_files:
 		assert(han.search(FileAccess.get_file_as_string(path)) == null, "Editor UI source must use English tr() text: %s" % path)
-	assert(_matching_files("res://addons/scatter/core/nodes", "_node.gd").size() - 5 == 34)
-	assert(_matching_files("res://addons/scatter/editor/views", "_view.gd").size() - 1 == 34)
+	assert(ScatterNodeRegistry.type_ids().size() == 34)
+	assert(not evaluator.contains("ScatterBoxNode"))
+	var gizmo := FileAccess.get_file_as_string("res://addons/scatter/editor/gizmo/scatter_gizmo_plugin.gd")
+	assert(not gizmo.contains("ScatterPathNode"))
+	assert(not gizmo.contains("ScatterPaintRegionNode"))
 	print("Scatter architecture rule test passed")
 	quit()
 

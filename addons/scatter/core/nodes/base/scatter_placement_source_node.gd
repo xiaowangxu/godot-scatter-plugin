@@ -12,5 +12,5 @@ func source_only() -> bool:
 	return true
 
 
-func input_instances(_context: ScatterEvaluationContext, _inputs: ScatterNodeInputs) -> ScatterInstanceBuffer:
-	return ScatterInstanceBuffer.new()
+func input_instances(_context: ScatterEvaluationContext, _inputs: ScatterNodeInputs) -> ScatterInstances:
+	return ScatterInstances.new()

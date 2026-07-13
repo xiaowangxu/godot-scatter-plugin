@@ -10,9 +10,9 @@ func minimum_width() -> float:
 
 
 func _build_ports() -> void:
-	var connected := context.graph.incoming_connections(model.node_id, &"sets").size()
+	var connected := context.graph.incoming_connections(model.node_id, &"instances").size()
 	for index in maxi(1, connected + 1):
-		add_port_row(&"sets", &"", tr("Set %d") % (index + 1))
+		add_port_row(&"instances", &"", tr("Instances %d") % (index + 1))
 	_count_label = Label.new()
 	_count_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_count_label.modulate = Color("d8b36f")

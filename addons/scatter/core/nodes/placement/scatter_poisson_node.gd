@@ -5,7 +5,10 @@ extends ScatterPlacementSourceNode
 @export_range(0.001, 1000000.0, 0.05) var radius := 1.0
 @export_range(1, 100, 1) var samples_before_rejection := 15
 @export_range(1, 1000000, 1) var max_points := 10000
-@export var restrict_height := true
+
+
+func get_input_ports() -> Array[ScatterPort]:
+	return [ScatterPort.new(&"shape", "Shape", ScatterValueTypeRegistry.SHAPE)]
 
 
 func get_type_id() -> StringName:
@@ -24,15 +27,14 @@ func supports_seed() -> bool:
 	return true
 
 
-func evaluate(context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterValue:
+func evaluate_value(context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterValue:
 	var buffer := input_instances(context, inputs)
 	ScatterCreationOps.append_poisson(
 		buffer,
-		context.region,
+		inputs.shape(),
 		radius,
 		samples_before_rejection,
 		max_points,
-		restrict_height,
 		context.random_for(self),
 		context.maximum_instances,
 	)

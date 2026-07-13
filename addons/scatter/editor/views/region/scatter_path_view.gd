@@ -4,11 +4,11 @@ extends ScatterNodeView
 
 
 func _build_ports() -> void:
-	add_port_row(&"", &"region", "Region")
+	add_port_row(&"", &"path", "Path")
 
 
 func _build_properties() -> void:
-	add_number_property(&"thickness", "Thickness", 0.0, 1000000.0, 0.1)
+	add_enum_property(&"space", "Space", PackedStringArray(["Global", "Local"]))
 	add_bool_property(&"closed", "Closed")
 
 

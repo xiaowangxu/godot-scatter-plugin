@@ -4,18 +4,14 @@ extends EditorPlugin
 const PanelScript := preload("res://addons/scatter/editor/scatter_panel.gd")
 const InspectorScript := preload("res://addons/scatter/editor/inspector/scatter_inspector_plugin.gd")
 const GizmoScript := preload("res://addons/scatter/editor/gizmo/scatter_gizmo_plugin.gd")
-const PaintToolScript := preload("res://addons/scatter/editor/paint/scatter_paint_tool.gd")
-const PathToolScript := preload("res://addons/scatter/editor/paint/scatter_path_tool.gd")
+const ViewportToolHostScript := preload("res://addons/scatter/editor/viewport/scatter_viewport_tool_host.gd")
 
 var _panel: ScatterPanel
 var _inspector: ScatterInspectorPlugin
 var _bottom_button: Button
 var _target: MultiMeshInstance3D
 var _gizmo: ScatterGizmoPlugin
-var _paint_tool: ScatterPaintTool
-var _path_tool: ScatterPathTool
-var _paint_toolbar: Control
-var _path_toolbar: Control
+var _viewport_tools: ScatterViewportToolHost
 
 
 func _enter_tree() -> void:
@@ -36,31 +32,14 @@ func _enter_tree() -> void:
 	_gizmo = GizmoScript.new()
 	_gizmo.configure(get_undo_redo(), _panel._path_data_changed, _panel.get_graph_for_build)
 	add_node_3d_gizmo_plugin(_gizmo)
-	_paint_tool = PaintToolScript.new()
-	_paint_tool.configure(_panel, _gizmo, get_undo_redo(), _build_current, _mark_scene_changed)
-	_paint_toolbar = _paint_tool.get_toolbar()
-	add_control_to_container(EditorPlugin.CONTAINER_SPATIAL_EDITOR_MENU, _paint_toolbar)
-	_path_tool = PathToolScript.new()
-	_path_tool.configure(_gizmo, get_undo_redo(), _panel._path_data_changed)
-	_path_toolbar = _path_tool.get_toolbar()
-	add_control_to_container(EditorPlugin.CONTAINER_SPATIAL_EDITOR_MENU, _path_toolbar)
+	_viewport_tools = ViewportToolHostScript.new()
+	_viewport_tools.configure(self, _panel, _gizmo, get_undo_redo(), _build_current, _mark_scene_changed)
 
 
 func _exit_tree() -> void:
-	if _paint_tool != null:
-		_paint_tool.stop()
-		_paint_tool = null
-	if _paint_toolbar != null:
-		remove_control_from_container(EditorPlugin.CONTAINER_SPATIAL_EDITOR_MENU, _paint_toolbar)
-		_paint_toolbar.queue_free()
-		_paint_toolbar = null
-	if _path_tool != null:
-		_path_tool.deactivate()
-		_path_tool = null
-	if _path_toolbar != null:
-		remove_control_from_container(EditorPlugin.CONTAINER_SPATIAL_EDITOR_MENU, _path_toolbar)
-		_path_toolbar.queue_free()
-		_path_toolbar = null
+	if _viewport_tools != null:
+		_viewport_tools.shutdown()
+		_viewport_tools = null
 	_target = null
 	if _gizmo != null:
 		remove_node_3d_gizmo_plugin(_gizmo)
@@ -83,11 +62,11 @@ func _edit(object: Object) -> void:
 	if object is MultiMeshInstance3D:
 		_target = object
 		_panel.set_target(_target)
-		_paint_tool.set_target(_target)
+		_viewport_tools.set_target(_target)
 	else:
 		_target = null
 		_panel.set_target(null)
-		_paint_tool.set_target(null)
+		_viewport_tools.set_target(null)
 
 
 func _make_visible(visible: bool) -> void:
@@ -100,7 +79,7 @@ func _make_visible(visible: bool) -> void:
 func _open_target(target: MultiMeshInstance3D) -> void:
 	_target = target
 	_panel.set_target(target)
-	_paint_tool.set_target(target)
+	_viewport_tools.set_target(target)
 	make_bottom_panel_item_visible(_panel)
 	get_editor_interface().edit_node(target)
 
@@ -138,7 +117,7 @@ func _build_one(target: MultiMeshInstance3D, mark_unsaved := true) -> void:
 	var graph := _panel.get_graph_for_build(target)
 	if graph == null:
 		return
-	var result := ScatterBuildService.build_target(target, graph)
+	var result := ScatterBuildService.build_target(target, graph, null, ScatterGraphResolver.new(_panel.get_graph_for_build))
 	if not result.ok:
 		if _panel.target == target:
 			_panel.update_status(tr("Build failed: %s") % result.error)
@@ -146,7 +125,13 @@ func _build_one(target: MultiMeshInstance3D, mark_unsaved := true) -> void:
 		return
 	ScatterMultiMeshWriter.apply(target, result)
 	if _panel.target == target:
-		_panel.update_group_counts(result.group_counts)
+		_panel.update_output_counts(result.output_counts)
+		if not result.warnings.is_empty():
+			_panel.update_status(tr("Built %d instances with %d warning(s): %s") % [
+				result.instances.transforms.size(),
+				result.warnings.size(),
+				result.warnings[0].message,
+			])
 	target.update_gizmos()
 	_mark_scene_changed(mark_unsaved)
 
@@ -207,26 +192,12 @@ func _refresh_after_metadata_change(target: MultiMeshInstance3D) -> void:
 
 
 func _viewport_tool_changed(tool_id: StringName, _node_id: int) -> void:
-	if tool_id == &"path":
-		_paint_tool.stop()
-		_path_tool.activate(_target, _panel.get_active_path_node())
-		make_bottom_panel_item_visible(_panel)
-	else:
-		_path_tool.deactivate()
-	if tool_id == &"paint":
-		_paint_tool.activate()
-		make_bottom_panel_item_visible(_panel)
-	else:
-		_paint_tool.stop()
+	_gizmo.set_active_node(_target, _node_id)
+	_viewport_tools.select(tool_id, _node_id)
 
 
 func _forward_3d_gui_input(camera: Camera3D, event: InputEvent) -> int:
-	if _paint_tool == null or _path_tool == null:
-		return EditorPlugin.AFTER_GUI_INPUT_PASS
-	var path_result := _path_tool.forward_3d_gui_input(camera, event)
-	if path_result == EditorPlugin.AFTER_GUI_INPUT_STOP:
-		return path_result
-	return _paint_tool.forward_3d_gui_input(camera, event)
+	return _viewport_tools.forward_3d_gui_input(camera, event) if _viewport_tools != null else EditorPlugin.AFTER_GUI_INPUT_PASS
 
 
 func _mark_scene_changed(mark_unsaved := true) -> void:

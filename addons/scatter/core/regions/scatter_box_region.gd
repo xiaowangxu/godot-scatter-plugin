@@ -1,6 +1,6 @@
 @tool
 class_name ScatterBoxRegion
-extends ScatterRegionValue
+extends ScatterRegularRegionValue
 
 var center := Vector3.ZERO
 var size := Vector3.ONE
@@ -13,7 +13,7 @@ func _init(p_center := Vector3.ZERO, p_size := Vector3.ONE, p_rotation_degrees :
 	rotation_degrees = p_rotation_degrees
 
 
-func get_bounds() -> AABB:
+func get_bounds_local() -> AABB:
 	var corners := ScatterMath.box_corners(center, size, rotation_degrees)
 	var result := AABB(corners[0], Vector3.ZERO)
 	for corner in corners:
@@ -21,7 +21,7 @@ func get_bounds() -> AABB:
 	return result
 
 
-func contains(point: Vector3) -> bool:
+func contains_local(point: Vector3) -> bool:
 	var half_size := ScatterMath.positive_vec3(size) * 0.5
 	var rotation := Basis.from_euler(rotation_degrees * PI / 180.0)
 	var local := rotation.inverse() * (point - center)
@@ -30,6 +30,15 @@ func contains(point: Vector3) -> bool:
 		and absf(local.y) <= half_size.y
 		and absf(local.z) <= half_size.z
 	)
+
+
+func sample_local(value: float) -> Vector3:
+	var unit := Vector3(
+		ScatterSampleHash.dimension(value, 0) - 0.5,
+		ScatterSampleHash.dimension(value, 1) - 0.5,
+		ScatterSampleHash.dimension(value, 2) - 0.5,
+	)
+	return center + Basis.from_euler(rotation_degrees * PI / 180.0) * (unit * ScatterMath.positive_vec3(size))
 
 
 func get_edges() -> Array[ScatterEdge]:

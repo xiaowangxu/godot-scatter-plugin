@@ -4,8 +4,8 @@ extends RefCounted
 
 var target: MultiMeshInstance3D
 var graph: ScatterGraph
-var region: ScatterRegionValue
 var session: ScatterEvaluationSession
+var resolver: ScatterGraphResolver
 var maximum_instances := 1_000_000
 
 
@@ -18,19 +18,14 @@ static func create(
 	context.target = p_target
 	context.graph = p_graph
 	context.session = p_session
+	context.resolver = ScatterGraphResolver.new()
 	return context
-
-
-func with_region(value: ScatterRegionValue) -> ScatterEvaluationContext:
-	var copy := ScatterEvaluationContext.create(target, graph, session)
-	copy.region = value
-	copy.maximum_instances = maximum_instances
-	return copy
 
 
 func with_target(p_target: MultiMeshInstance3D, p_graph: ScatterGraph) -> ScatterEvaluationContext:
 	var copy := ScatterEvaluationContext.create(p_target, p_graph, session)
 	copy.maximum_instances = maximum_instances
+	copy.resolver = resolver
 	return copy
 
 
@@ -40,8 +35,17 @@ func random_for(node: ScatterNode) -> RandomNumberGenerator:
 	return rng
 
 
-func evaluation_cache_key(node_id: int) -> String:
-	var graph_id := graph.get_instance_id() if graph != null else 0
-	var target_id := target.get_instance_id() if is_instance_valid(target) else 0
-	var region_id := region.get_instance_id() if region != null else 0
-	return "%d:%d:%d:%d:%d" % [graph_id, target_id, node_id, region_id, maximum_instances]
+func add_warning(code: StringName, node_id: int, message: String, details := {}) -> void:
+	session.diagnostics.append(ScatterDiagnostic.new(ScatterDiagnostic.Severity.WARNING, code, node_id, message, details))
+
+
+func add_error(code: StringName, node_id: int, message: String, details := {}) -> void:
+	session.diagnostics.append(ScatterDiagnostic.new(ScatterDiagnostic.Severity.ERROR, code, node_id, message, details))
+
+
+func cache_key(node_id: int) -> String:
+	return "%d:%d:%d" % [
+		graph.get_instance_id() if graph != null else 0,
+		target.get_instance_id() if is_instance_valid(target) else 0,
+		node_id,
+	]

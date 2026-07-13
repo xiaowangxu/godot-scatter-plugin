@@ -19,13 +19,9 @@ func get_color() -> Color:
 	return Color("5d83b3")
 
 
-func evaluate(_context: ScatterEvaluationContext, _inputs: ScatterNodeInputs) -> ScatterValue:
-	return ScatterBoxRegion.new(center, size, rotation)
+func get_output_ports() -> Array[ScatterPort]:
+	return [ScatterPort.new(&"region", "Region", ScatterValueTypeRegistry.REGULAR_REGION)]
 
 
-func get_preview_lines() -> PackedVector3Array:
-	var result := PackedVector3Array()
-	for edge in ScatterBoxRegion.new(center, size, rotation).get_edges():
-		result.append(edge.a)
-		result.append(edge.b)
-	return result
+func evaluate_value(context: ScatterEvaluationContext, _inputs: ScatterNodeInputs) -> ScatterValue:
+	return freeze_regular_region(context, ScatterBoxRegion.new(center, size, rotation))

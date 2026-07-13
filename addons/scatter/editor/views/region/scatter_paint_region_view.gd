@@ -17,6 +17,7 @@ func _build_ports() -> void:
 
 
 func _build_properties() -> void:
+	add_enum_property(&"space", "Space", PackedStringArray(["Global", "Local"]))
 	add_number_property(&"depth", "Depth", 0.01, 1000.0, 0.05)
 	add_number_property(&"surface_offset", "Surface Offset", -1000.0, 1000.0, 0.01)
 

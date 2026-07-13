@@ -8,7 +8,7 @@ var undo: ScatterUndoService
 var sync_views: Callable
 var graph_changed: Callable
 var build_requested: Callable
-var group_counts: Dictionary[int, int] = {}
+var output_counts: Dictionary = {}
 
 
 func commit_property(

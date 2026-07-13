@@ -2,15 +2,8 @@
 class_name ScatterTransformOps
 extends RefCounted
 
-enum Space {
-	GLOBAL,
-	LOCAL,
-	INSTANCE,
-}
-
-
 static func apply_array(
-		buffer: ScatterInstanceBuffer,
+		buffer: ScatterInstances,
 		amount: int,
 		min_amount: int,
 		local_offset: bool,
@@ -51,9 +44,7 @@ static func apply_array(
 			copy.origin += move
 			var pivot := original.origin if individual_rotation_pivots else rotation_pivot
 			copy.origin = pivot + delta_basis * (copy.origin - pivot)
-			buffer.transforms.append(copy)
-			buffer.colors.append(original_colors[original_index])
-			buffer.custom_data.append(original_custom[original_index])
+			buffer.add_instance(copy, original_colors[original_index], original_custom[original_index])
 	if randomize_indices:
 		for index in range(buffer.transforms.size() - 1, 0, -1):
 			var swap_index := rng.randi_range(0, index)
@@ -63,7 +54,7 @@ static func apply_array(
 
 
 static func apply_transform(
-		buffer: ScatterInstanceBuffer,
+		buffer: ScatterInstances,
 		position: Vector3,
 		rotation_degrees: Vector3,
 		scale: Vector3,
@@ -85,7 +76,7 @@ static func apply_transform(
 
 
 static func apply_position(
-		buffer: ScatterInstanceBuffer,
+		buffer: ScatterInstances,
 		value: Vector3,
 		operation: int,
 		space: int,
@@ -97,18 +88,18 @@ static func apply_position(
 		if operation == 0:
 			transform.origin += _resolve_offset(transform, value, space, target_transform)
 		elif operation == 1:
-			if space == Space.GLOBAL:
+			if space == ScatterSpace.Type.GLOBAL:
 				var global_origin := target_transform * transform.origin
 				global_origin *= value
 				transform.origin = target_transform.affine_inverse() * global_origin
-			elif space == Space.LOCAL:
+			elif space == ScatterSpace.Type.LOCAL:
 				transform.origin *= value
 			# An instance origin is (0, 0, 0) in its own reference frame,
 			# so multiplying its position in Instance space is intentionally a no-op.
 		else:
-			if space == Space.GLOBAL:
+			if space == ScatterSpace.Type.GLOBAL:
 				transform.origin = target_transform.affine_inverse() * value
-			elif space == Space.LOCAL:
+			elif space == ScatterSpace.Type.LOCAL:
 				transform.origin = value
 			else:
 				# Instance coordinates use each transform's axes, while retaining the
@@ -118,7 +109,7 @@ static func apply_position(
 
 
 static func apply_rotation(
-		buffer: ScatterInstanceBuffer,
+		buffer: ScatterInstances,
 		value: Vector3,
 		operation: int,
 		space: int,
@@ -144,7 +135,7 @@ static func apply_rotation(
 
 
 static func apply_scale(
-		buffer: ScatterInstanceBuffer,
+		buffer: ScatterInstances,
 		value: Vector3,
 		operation: int,
 		space: int,
@@ -165,7 +156,7 @@ static func apply_scale(
 
 
 static func apply_random_transform(
-		buffer: ScatterInstanceBuffer,
+		buffer: ScatterInstances,
 		position: Vector3,
 		rotation_degrees: Vector3,
 		scale: Vector3,
@@ -198,7 +189,7 @@ static func apply_random_transform(
 
 
 static func apply_random_rotation(
-		buffer: ScatterInstanceBuffer,
+		buffer: ScatterInstances,
 		rotation_degrees: Vector3,
 		snap_angle: Vector3,
 		space: int,
@@ -237,9 +228,9 @@ static func _resolve_offset(
 		space: int,
 		target_transform: Transform3D,
 ) -> Vector3:
-	if space == Space.GLOBAL:
+	if space == ScatterSpace.Type.GLOBAL:
 		return target_transform.basis.inverse() * value
-	if space == Space.INSTANCE:
+	if space == ScatterSpace.Type.INSTANCE:
 		return transform.basis * value
 	return value
 
@@ -250,16 +241,16 @@ static func _apply_rotation_delta(
 		space: int,
 		target_basis: Basis,
 ) -> Basis:
-	if space == Space.INSTANCE:
+	if space == ScatterSpace.Type.INSTANCE:
 		return transform.basis * delta
-	elif space == Space.GLOBAL:
+	elif space == ScatterSpace.Type.GLOBAL:
 		return target_basis.inverse() * delta * target_basis * transform.basis
 	return delta * transform.basis
 
 
 static func _rotation_in_space(transform: Transform3D, space: int, target_basis: Basis) -> Basis:
 	var orientation := transform.basis.orthonormalized()
-	return target_basis * orientation if space == Space.GLOBAL else orientation
+	return target_basis * orientation if space == ScatterSpace.Type.GLOBAL else orientation
 
 
 static func _set_rotation(
@@ -268,12 +259,12 @@ static func _set_rotation(
 		space: int,
 		target_basis: Basis,
 ) -> Basis:
-	var local_rotation := target_basis.inverse() * desired if space == Space.GLOBAL else desired
+	var local_rotation := target_basis.inverse() * desired if space == ScatterSpace.Type.GLOBAL else desired
 	return local_rotation.orthonormalized().scaled(transform.basis.get_scale())
 
 
 static func _scale_in_space(transform: Transform3D, space: int, target_basis: Basis) -> Vector3:
-	var basis := target_basis * transform.basis if space == Space.GLOBAL else transform.basis
+	var basis := target_basis * transform.basis if space == ScatterSpace.Type.GLOBAL else transform.basis
 	return basis.get_scale()
 
 
@@ -292,14 +283,14 @@ static func _apply_scale_factor(
 		target_basis: Basis,
 ) -> Basis:
 	var delta := Basis.from_scale(factor)
-	if space == Space.INSTANCE:
+	if space == ScatterSpace.Type.INSTANCE:
 		return transform.basis * delta
-	elif space == Space.GLOBAL:
+	elif space == ScatterSpace.Type.GLOBAL:
 		return target_basis.inverse() * delta * target_basis * transform.basis
 	return delta * transform.basis
 
 
-static func apply_look_at(buffer: ScatterInstanceBuffer, target_position: Vector3, up: Vector3) -> void:
+static func apply_look_at(buffer: ScatterInstances, target_position: Vector3, up: Vector3) -> void:
 	for index in buffer.transforms.size():
 		var transform := buffer.transforms[index]
 		var direction := target_position - transform.origin
@@ -309,7 +300,7 @@ static func apply_look_at(buffer: ScatterInstanceBuffer, target_position: Vector
 
 
 static func apply_snap(
-		buffer: ScatterInstanceBuffer,
+		buffer: ScatterInstances,
 		position_step: Vector3,
 		rotation_step_degrees: Vector3,
 		scale_step: Vector3,
@@ -325,11 +316,10 @@ static func apply_snap(
 
 
 static func apply_relax(
-		buffer: ScatterInstanceBuffer,
+		buffer: ScatterInstances,
 		iterations: int,
 		offset_step: float,
 		consecutive_step_multiplier: float,
-		restrict_height: bool,
 ) -> void:
 	if buffer.transforms.size() < 2:
 		return
@@ -346,8 +336,6 @@ static func apply_relax(
 				if difference.length_squared() < best:
 					best = difference.length_squared()
 					closest = difference
-			if restrict_height:
-				closest.y = 0.0
 			directions.append(closest.normalized() * offset)
 		for index in buffer.transforms.size():
 			buffer.transforms[index].origin += directions[index]
@@ -355,7 +343,7 @@ static func apply_relax(
 
 
 static func apply_clusterize(
-		buffer: ScatterInstanceBuffer,
+		buffer: ScatterInstances,
 		mask_path: String,
 		mask_rotation_degrees: float,
 		mask_offset: Vector2,
@@ -391,7 +379,7 @@ static func apply_clusterize(
 
 
 static func apply_projection(
-		buffer: ScatterInstanceBuffer,
+		buffer: ScatterInstances,
 		target: MultiMeshInstance3D,
 		ray_direction: Vector3,
 		ray_length: float,

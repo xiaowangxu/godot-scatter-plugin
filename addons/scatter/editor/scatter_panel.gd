@@ -388,9 +388,9 @@ func _on_recipe_changed() -> void:
 		target.update_gizmos()
 
 
-func update_group_counts(group_counts: Dictionary) -> void:
+func update_output_counts(output_counts: Dictionary) -> void:
 	if _graph_editor != null:
-		_graph_editor.update_group_counts(group_counts)
+		_graph_editor.update_output_counts(output_counts)
 	update_status()
 
 

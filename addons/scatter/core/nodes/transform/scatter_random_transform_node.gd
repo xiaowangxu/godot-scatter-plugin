@@ -28,7 +28,7 @@ func supports_seed() -> bool:
 	return true
 
 
-func evaluate(context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterValue:
+func evaluate_value(context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterValue:
 	var buffer := input_instances(context, inputs)
 	ScatterTransformOps.apply_random_transform(
 		buffer,

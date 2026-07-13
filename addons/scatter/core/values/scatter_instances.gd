@@ -1,34 +1,43 @@
 @tool
-class_name ScatterInstanceBuffer
+class_name ScatterInstances
 extends ScatterValue
 
-@export var transforms: Array[Transform3D] = []
-@export var colors: Array[Color] = []
-@export var custom_data: Array[Color] = []
+var transforms: Array[Transform3D] = []
+var colors: Array[Color] = []
+var custom_data: Array[Color] = []
 
 
-func get_value_type() -> int:
-	return ScatterPort.ValueType.INSTANCES
+func get_value_type_id() -> StringName:
+	return ScatterValueTypeRegistry.INSTANCES
 
 
-func duplicate_buffer() -> ScatterInstanceBuffer:
-	var copy := ScatterInstanceBuffer.new()
+func duplicate_value() -> ScatterValue:
+	return duplicate_instances()
+
+
+func duplicate_instances() -> ScatterInstances:
+	var copy := ScatterInstances.new()
 	copy.transforms = transforms.duplicate()
 	copy.colors = colors.duplicate()
 	copy.custom_data = custom_data.duplicate()
 	return copy
 
 
-func append_buffer(other: ScatterInstanceBuffer, maximum := -1) -> void:
+func add_instance(transform: Transform3D, color := Color.WHITE, data := Color(0, 0, 0, 0)) -> void:
+	transforms.append(transform)
+	colors.append(color)
+	custom_data.append(data)
+
+
+func append_instances(other: ScatterInstances, maximum := -1) -> void:
 	if other == null:
 		return
+	other.normalize()
 	var amount := other.transforms.size()
 	if maximum >= 0:
 		amount = mini(amount, maxi(0, maximum - transforms.size()))
 	for index in amount:
-		transforms.append(other.transforms[index])
-		colors.append(other.colors[index] if index < other.colors.size() else Color.WHITE)
-		custom_data.append(other.custom_data[index] if index < other.custom_data.size() else Color(0, 0, 0, 0))
+		add_instance(other.transforms[index], other.colors[index], other.custom_data[index])
 
 
 func normalize() -> void:
@@ -49,11 +58,10 @@ func limit(maximum: int) -> void:
 
 
 func remove_at(index: int) -> void:
+	normalize()
 	transforms.remove_at(index)
-	if index < colors.size():
-		colors.remove_at(index)
-	if index < custom_data.size():
-		custom_data.remove_at(index)
+	colors.remove_at(index)
+	custom_data.remove_at(index)
 
 
 func is_empty() -> bool:

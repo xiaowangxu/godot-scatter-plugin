@@ -112,23 +112,25 @@ func _paint_at_screen(camera: Camera3D, screen_position: Vector2, dragging := fa
 	if hit.is_empty():
 		return
 	var local_position := target.to_local(hit.position)
+	var authored_position: Vector3 = hit.position if paint_node.space == ScatterSpace.Type.GLOBAL else local_position
 	if (
 		dragging
 		and _last_paint_position != Vector3.INF
-		and _last_paint_position.distance_to(local_position) < panel.brush_radius * 0.35
+		and _last_paint_position.distance_to(authored_position) < panel.brush_radius * 0.35
 	):
 		return
-	_last_paint_position = local_position
+	_last_paint_position = authored_position
 	var local_normal := (target.global_transform.basis.inverse() * Vector3(hit.normal)).normalized()
+	var authored_normal: Vector3 = Vector3(hit.normal).normalized() if paint_node.space == ScatterSpace.Type.GLOBAL else local_normal
 	var next_strokes: Array[ScatterPaintStroke] = paint_node.strokes.duplicate()
 	if panel.paint_erase:
 		for index in range(next_strokes.size() - 1, -1, -1):
 			var stroke := next_strokes[index]
 			var erase_radius := panel.brush_radius + stroke.radius * 0.35
-			if stroke.position.distance_to(local_position) <= erase_radius:
+			if stroke.position.distance_to(authored_position) <= erase_radius:
 				next_strokes.remove_at(index)
 	else:
-		next_strokes.append(ScatterPaintStroke.create(local_position, local_normal, panel.brush_radius))
+		next_strokes.append(ScatterPaintStroke.create(authored_position, authored_normal, panel.brush_radius))
 	var undo := ScatterUndoService.new(undo_redo, target, _paint_data_changed)
 	undo.commit_property(
 		paint_node,

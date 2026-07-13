@@ -6,6 +6,10 @@ extends ScatterPlacementSourceNode
 @export var align_to_path := false
 
 
+func get_input_ports() -> Array[ScatterPort]:
+	return [ScatterPort.new(&"path", "Path", ScatterValueTypeRegistry.PATH)]
+
+
 func get_type_id() -> StringName:
 	return &"edge_random"
 
@@ -22,11 +26,11 @@ func supports_seed() -> bool:
 	return true
 
 
-func evaluate(context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterValue:
+func evaluate_value(context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterValue:
 	var buffer := input_instances(context, inputs)
-	ScatterCreationOps.append_edges_random(
+	ScatterCreationOps.append_path_random(
 		buffer,
-		context.region,
+		inputs.path(),
 		instance_count,
 		align_to_path,
 		context.random_for(self),

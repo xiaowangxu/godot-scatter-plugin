@@ -22,24 +22,26 @@ func get_color() -> Color:
 	return Color("8b929e")
 
 
-func evaluate(context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterValue:
+func evaluate_value(context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterValue:
 	var buffer := input_instances(context, inputs)
 	var source := context.target.get_node_or_null(scatter_node)
 	if not source is MultiMeshInstance3D:
 		return buffer
 	var source_target := source as MultiMeshInstance3D
-	var source_graph := ScatterGraphAttachment.get_graph(source_target)
+	var source_graph := context.resolver.resolve(source_target)
 	if source_graph == null:
 		return buffer
-	var result := ScatterBuildService.build_target(source_target, source_graph, context.session)
+	var result := ScatterBuildService.build_target(source_target, source_graph, context.session, context.resolver)
 	if not result.ok:
-		context.session.error = result.error
+		context.add_error(&"proxy_build_failed", node_id, result.error)
 		return buffer
 	var source_to_target: Transform3D = context.target.global_transform.affine_inverse() * source_target.global_transform
-	var converted := ScatterInstanceBuffer.new()
+	var converted := ScatterInstances.new()
 	for index in result.instances.transforms.size():
-		converted.transforms.append(source_to_target * result.instances.transforms[index])
-		converted.colors.append(result.instances.colors[index])
-		converted.custom_data.append(result.instances.custom_data[index])
-	buffer.append_buffer(converted, context.maximum_instances)
+		converted.add_instance(
+			source_to_target * result.instances.transforms[index],
+			result.instances.colors[index],
+			result.instances.custom_data[index],
+		)
+	buffer.append_instances(converted, context.maximum_instances)
 	return buffer

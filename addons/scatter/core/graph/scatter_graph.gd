@@ -105,7 +105,13 @@ func connect_nodes(
 		return null
 	var output_port := from_node.output_port(from_port_id)
 	var input_port := to_node.input_port(to_port_id)
-	if output_port == null or input_port == null or output_port.value_type != input_port.value_type:
+	if (
+		output_port == null
+		or input_port == null
+		or not output_port.connectable
+		or not input_port.connectable
+		or not ScatterValueTypeRegistry.is_assignable(output_port.type_id, input_port.type_id)
+	):
 		return null
 	if would_create_cycle(from_node_id, to_node_id):
 		return null

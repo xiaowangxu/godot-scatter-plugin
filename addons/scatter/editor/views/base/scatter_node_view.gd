@@ -126,10 +126,10 @@ func add_port_row(
 	set_slot(
 		get_child_count() - 1,
 		input_port != null,
-		input_port.value_type if input_port != null else 0,
+		input_port.visual_type() if input_port != null else 0,
 		input_port.color() if input_port != null else Color.WHITE,
 		output_port != null,
-		output_port.value_type if output_port != null else 0,
+		output_port.visual_type() if output_port != null else 0,
 		output_port.color() if output_port != null else Color.WHITE,
 	)
 	if input_port != null:

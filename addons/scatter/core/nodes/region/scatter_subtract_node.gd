@@ -15,5 +15,5 @@ func get_color() -> Color:
 	return Color("3fae9a")
 
 
-func evaluate(_context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterValue:
-	return ScatterSubtractRegion.new(inputs.region(&"a"), inputs.region(&"b"))
+func evaluate_value(_context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterValue:
+	return ScatterSubtractRegion.new(inputs.shape(&"a"), inputs.shape(&"b"))

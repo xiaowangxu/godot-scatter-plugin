@@ -51,9 +51,7 @@ func _ready() -> void:
 	minimap_enabled = true
 	minimap_size = Vector2(190, 120)
 	right_disconnects = true
-	add_valid_connection_type(ScatterPort.ValueType.REGION, ScatterPort.ValueType.REGION)
-	add_valid_connection_type(ScatterPort.ValueType.INSTANCES, ScatterPort.ValueType.INSTANCES)
-	add_valid_connection_type(ScatterPort.ValueType.SCATTER_SET, ScatterPort.ValueType.SCATTER_SET)
+	_refresh_valid_connection_types()
 	connection_request.connect(_connection_requested)
 	disconnection_request.connect(_disconnection_requested)
 	delete_nodes_request.connect(_delete_nodes_requested)
@@ -66,6 +64,26 @@ func _ready() -> void:
 	node_deselected.connect(_node_deselected)
 	_build_context_menus()
 	_build_add_popup()
+	ScatterExtensionRegistry.shared().changed.connect(_registry_changed)
+
+
+func _refresh_valid_connection_types() -> void:
+	if has_method("clear_valid_connection_types"):
+		call("clear_valid_connection_types")
+	for actual in ScatterValueTypeRegistry.registered_types():
+		for expected in ScatterValueTypeRegistry.registered_types():
+			if ScatterValueTypeRegistry.is_assignable(actual, expected):
+				add_valid_connection_type(
+					ScatterValueTypeRegistry.visual_id(actual),
+					ScatterValueTypeRegistry.visual_id(expected),
+				)
+
+
+func _registry_changed() -> void:
+	_refresh_valid_connection_types()
+	_build_add_popup()
+	if graph != null:
+		rebuild_graph()
 
 
 func configure(
@@ -126,7 +144,7 @@ func rebuild_graph(focus_view := false) -> void:
 	clear_connections()
 	_clear_node_views()
 	for node in graph.nodes:
-		var view_script := ScatterNodeRegistry.get_view_script(node.get_type_id())
+		var view_script := ScatterExtensionRegistry.get_view_script(node.get_type_id())
 		if view_script == null:
 			continue
 		var view = view_script.new()
@@ -166,12 +184,10 @@ func sync_views() -> void:
 			child.sync_from_model()
 
 
-func update_group_counts(group_counts: Dictionary) -> void:
+func update_output_counts(output_counts: Dictionary) -> void:
 	if editor_context == null:
 		return
-	editor_context.group_counts.clear()
-	for key in group_counts:
-		editor_context.group_counts[int(key)] = int(group_counts[key])
+	editor_context.output_counts = output_counts.duplicate()
 	sync_views()
 
 
@@ -227,11 +243,20 @@ func popup_add_menu(screen_position := Vector2i.ZERO) -> void:
 
 
 func _build_add_popup() -> void:
+	if _add_popup != null:
+		remove_child(_add_popup)
+		_add_popup.queue_free()
 	_add_popup = PopupMenu.new()
 	_add_popup.name = "AddNodeMenu"
 	add_child(_add_popup)
+	_popup_types.clear()
 	var item_id := 1
-	for category in [&"Group", &"Region", &"Placement", &"Transform", &"Filter", &"Data"]:
+	var categories: Array[StringName] = []
+	for prototype in ScatterNodeRegistry.prototypes():
+		if prototype.get_type_id() != &"final_output" and not categories.has(prototype.get_category()):
+			categories.append(prototype.get_category())
+	categories.sort_custom(func(a: StringName, b: StringName) -> bool: return String(a).naturalnocasecmp_to(String(b)) < 0)
+	for category in categories:
 		_add_popup.add_separator(tr(String(category)))
 		for prototype in ScatterNodeRegistry.prototypes():
 			if prototype.get_category() != category or prototype.get_type_id() == &"final_output":
@@ -518,7 +543,7 @@ func _node_deselected(node: Node) -> void:
 
 
 func _set_active_viewport_view(view: ScatterNodeView) -> void:
-	var next_id := view.model.node_id if view != null and not view.get_viewport_tool_id().is_empty() else 0
+	var next_id := view.model.node_id if view != null else 0
 	var current_id := int(_active_viewport_node_id)
 	if next_id == current_id:
 		return

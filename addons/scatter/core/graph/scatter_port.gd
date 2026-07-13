@@ -2,35 +2,33 @@
 class_name ScatterPort
 extends RefCounted
 
-enum ValueType {
-	REGION = 1,
-	INSTANCES = 2,
-	SCATTER_SET = 3,
-}
-
-const COLORS := {
-	ValueType.REGION: Color("55b8a6"),
-	ValueType.INSTANCES: Color("b889e8"),
-	ValueType.SCATTER_SET: Color("e1a85a"),
-}
-
 var id: StringName
 var label: String
-var value_type: ValueType
+var type_id: StringName
 var variadic := false
+var connectable := true
+var visible := true
 
 
 func _init(
 		p_id: StringName = &"value",
 		p_label := "Value",
-		p_value_type: ValueType = ValueType.INSTANCES,
+		p_type_id: StringName = ScatterValueTypeRegistry.INSTANCES,
 		p_variadic := false,
+		p_connectable := true,
+		p_visible := true,
 ) -> void:
 	id = p_id
 	label = p_label
-	value_type = p_value_type
+	type_id = p_type_id
 	variadic = p_variadic
+	connectable = p_connectable
+	visible = p_visible
 
 
 func color() -> Color:
-	return COLORS.get(value_type, Color.WHITE)
+	return ScatterValueTypeRegistry.color(type_id)
+
+
+func visual_type() -> int:
+	return ScatterValueTypeRegistry.visual_id(type_id)

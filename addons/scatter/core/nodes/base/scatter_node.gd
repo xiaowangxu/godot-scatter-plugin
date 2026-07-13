@@ -25,10 +25,24 @@ extends Resource
 @abstract func get_output_ports() -> Array[ScatterPort]
 
 
-@abstract func evaluate(context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterValue
+@abstract func evaluate_value(context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterValue
 
 
-func evaluate_disabled(_context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterValue:
+func evaluate(context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterNodeOutputs:
+	var ports := get_output_ports()
+	if ports.is_empty():
+		return ScatterNodeOutputs.new()
+	return ScatterNodeOutputs.single(ports[0].id, evaluate_value(context, inputs))
+
+
+func evaluate_disabled(context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterNodeOutputs:
+	var ports := get_output_ports()
+	if ports.is_empty():
+		return ScatterNodeOutputs.new()
+	return ScatterNodeOutputs.single(ports[0].id, evaluate_disabled_value(context, inputs))
+
+
+func evaluate_disabled_value(_context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterValue:
 	for port in get_input_ports():
 		var value := inputs.first(port.id)
 		if value != null:
@@ -66,10 +80,6 @@ func is_deletable() -> bool:
 
 func validate(_context: ScatterEvaluationContext) -> PackedStringArray:
 	return PackedStringArray()
-
-
-func get_preview_lines() -> PackedVector3Array:
-	return PackedVector3Array()
 
 
 func input_port(port_id: StringName) -> ScatterPort:

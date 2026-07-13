@@ -2,25 +2,25 @@
 class_name ScatterUnionRegion
 extends ScatterRegionValue
 
-var a: ScatterRegionValue
-var b: ScatterRegionValue
+var a: ScatterShapeValue
+var b: ScatterShapeValue
 
 
-func _init(p_a: ScatterRegionValue = null, p_b: ScatterRegionValue = null) -> void:
+func _init(p_a: ScatterShapeValue = null, p_b: ScatterShapeValue = null) -> void:
 	a = p_a if p_a != null else ScatterEmptyRegion.new()
 	b = p_b if p_b != null else ScatterEmptyRegion.new()
 
 
-func get_bounds() -> AABB:
+func get_bounds_local() -> AABB:
 	if a.is_empty():
-		return b.get_bounds()
+		return b.get_bounds_local()
 	if b.is_empty():
-		return a.get_bounds()
-	return a.get_bounds().merge(b.get_bounds())
+		return a.get_bounds_local()
+	return a.get_bounds_local().merge(b.get_bounds_local())
 
 
-func contains(point: Vector3) -> bool:
-	return a.contains(point) or b.contains(point)
+func contains_local(point: Vector3) -> bool:
+	return a.contains_local(point) or b.contains_local(point)
 
 
 func is_empty() -> bool:
@@ -32,13 +32,9 @@ func contains_exclusion(point: Vector3) -> bool:
 
 
 func get_edges() -> Array[ScatterEdge]:
-	var result := a.get_edges()
-	result.append_array(b.get_edges())
+	var result: Array[ScatterEdge] = []
+	if a is ScatterRegionValue:
+		result.append_array((a as ScatterRegionValue).get_edges())
+	if b is ScatterRegionValue:
+		result.append_array((b as ScatterRegionValue).get_edges())
 	return result
-
-
-func sample(rng: RandomNumberGenerator, flat: bool) -> Vector3:
-	var first := a if rng.randf() < 0.5 else b
-	var second := b if first == a else a
-	var point := first.sample(rng, flat)
-	return point if point.is_finite() else second.sample(rng, flat)

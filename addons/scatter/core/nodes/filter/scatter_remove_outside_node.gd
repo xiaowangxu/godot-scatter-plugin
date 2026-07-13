@@ -21,7 +21,14 @@ func get_color() -> Color:
 	return Color("bd5b60")
 
 
-func evaluate(context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterValue:
+func get_input_ports() -> Array[ScatterPort]:
+	return [
+		ScatterPort.new(&"instances", "Instances", ScatterValueTypeRegistry.INSTANCES),
+		ScatterPort.new(&"shape", "Shape", ScatterValueTypeRegistry.SHAPE),
+	]
+
+
+func evaluate_value(context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterValue:
 	var buffer := input_instances(context, inputs)
-	ScatterFilterOps.remove_outside(buffer, context.region, negative_shapes_only)
+	ScatterFilterOps.remove_outside(buffer, inputs.shape(), negative_shapes_only)
 	return buffer

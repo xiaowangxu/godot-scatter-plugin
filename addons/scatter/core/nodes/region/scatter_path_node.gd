@@ -1,10 +1,10 @@
 @tool
 class_name ScatterPathNode
-extends ScatterRegionNode
+extends ScatterNode
 
 @export var points := PackedVector3Array([Vector3(-5, 0, 0), Vector3(5, 0, 0)])
-@export_range(0.0, 1000000.0, 0.1) var thickness := 1.0
 @export var closed := false
+@export_enum("Global:0", "Local:1") var space: int = ScatterSpace.Type.LOCAL
 
 
 func get_type_id() -> StringName:
@@ -12,20 +12,34 @@ func get_type_id() -> StringName:
 
 
 func get_caption() -> String:
-	return "Path Region"
+	return "Path"
+
+
+func get_category() -> StringName:
+	return &"Shape"
+
+
+func get_input_ports() -> Array[ScatterPort]:
+	return []
+
+
+func get_output_ports() -> Array[ScatterPort]:
+	return [ScatterPort.new(&"path", "Path", ScatterValueTypeRegistry.PATH)]
 
 
 func get_color() -> Color:
 	return Color("5d83b3")
 
 
-func evaluate(_context: ScatterEvaluationContext, _inputs: ScatterNodeInputs) -> ScatterValue:
-	return ScatterPathRegion.new(points, thickness, closed)
+func evaluate_value(context: ScatterEvaluationContext, _inputs: ScatterNodeInputs) -> ScatterValue:
+	if space == ScatterSpace.Type.LOCAL or context == null or not is_instance_valid(context.target):
+		return ScatterPathValue.new(points, closed)
+	var transform := ScatterSpace.authored_to_local(space, context.target.global_transform if context.target.is_inside_tree() else context.target.transform)
+	var local_points := PackedVector3Array()
+	for point in points:
+		local_points.append(transform * point)
+	return ScatterPathValue.new(local_points, closed)
 
 
-func get_preview_lines() -> PackedVector3Array:
-	var result := PackedVector3Array()
-	for edge in ScatterPathRegion.new(points, thickness, closed).get_edges():
-		result.append(edge.a)
-		result.append(edge.b)
-	return result
+func evaluate_disabled_value(_context: ScatterEvaluationContext, _inputs: ScatterNodeInputs) -> ScatterValue:
+	return ScatterPathValue.new()

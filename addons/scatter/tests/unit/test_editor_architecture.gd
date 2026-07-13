@@ -57,7 +57,7 @@ func _init() -> void:
 	context.undo = ScatterUndoService.new()
 	var view_count := 0
 	for prototype in ScatterNodeRegistry.prototypes():
-		var view_script := ScatterNodeRegistry.get_view_script(prototype.get_type_id())
+		var view_script := ScatterExtensionRegistry.get_view_script(prototype.get_type_id())
 		var view = view_script.new()
 		assert(view is ScatterNodeView)
 		root.add_child(view)

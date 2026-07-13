@@ -2,21 +2,21 @@
 class_name ScatterSubtractRegion
 extends ScatterRegionValue
 
-var a: ScatterRegionValue
-var b: ScatterRegionValue
+var a: ScatterShapeValue
+var b: ScatterShapeValue
 
 
-func _init(p_a: ScatterRegionValue = null, p_b: ScatterRegionValue = null) -> void:
+func _init(p_a: ScatterShapeValue = null, p_b: ScatterShapeValue = null) -> void:
 	a = p_a if p_a != null else ScatterEmptyRegion.new()
 	b = p_b if p_b != null else ScatterEmptyRegion.new()
 
 
-func get_bounds() -> AABB:
-	return a.get_bounds()
+func get_bounds_local() -> AABB:
+	return a.get_bounds_local()
 
 
-func contains(point: Vector3) -> bool:
-	return a.contains(point) and not b.contains(point)
+func contains_local(point: Vector3) -> bool:
+	return a.contains_local(point) and not b.contains_local(point)
 
 
 func is_empty() -> bool:
@@ -24,16 +24,8 @@ func is_empty() -> bool:
 
 
 func contains_exclusion(point: Vector3) -> bool:
-	return b.contains(point) or a.contains_exclusion(point)
+	return b.contains_local(point) or (a is ScatterRegionValue and (a as ScatterRegionValue).contains_exclusion(point))
 
 
 func get_edges() -> Array[ScatterEdge]:
-	return a.get_edges()
-
-
-func sample(rng: RandomNumberGenerator, flat: bool) -> Vector3:
-	for _attempt in 100:
-		var point := a.sample(rng, flat)
-		if point.is_finite() and not b.contains(point):
-			return point
-	return Vector3.INF
+	return (a as ScatterRegionValue).get_edges() if a is ScatterRegionValue else []

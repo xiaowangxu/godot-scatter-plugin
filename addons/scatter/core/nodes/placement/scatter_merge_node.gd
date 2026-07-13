@@ -17,16 +17,16 @@ func get_color() -> Color:
 
 func get_input_ports() -> Array[ScatterPort]:
 	return [
-		ScatterPort.new(&"a", "A", ScatterPort.ValueType.INSTANCES),
-		ScatterPort.new(&"b", "B", ScatterPort.ValueType.INSTANCES),
+		ScatterPort.new(&"a", "A", ScatterValueTypeRegistry.INSTANCES),
+		ScatterPort.new(&"b", "B", ScatterValueTypeRegistry.INSTANCES),
 	]
 
 
-func evaluate(context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterValue:
+func evaluate_value(context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterValue:
 	var a := inputs.instances(&"a")
 	var b := inputs.instances(&"b")
-	var result := a.duplicate_buffer() if a != null else ScatterInstanceBuffer.new()
+	var result := a.duplicate_instances() if a != null else ScatterInstances.new()
 	if b != null:
-		result.append_buffer(b, context.maximum_instances)
+		result.append_instances(b, context.maximum_instances)
 	result.limit(context.maximum_instances)
 	return result

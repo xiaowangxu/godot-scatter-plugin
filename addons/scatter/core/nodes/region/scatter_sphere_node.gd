@@ -18,13 +18,9 @@ func get_color() -> Color:
 	return Color("5d83b3")
 
 
-func evaluate(_context: ScatterEvaluationContext, _inputs: ScatterNodeInputs) -> ScatterValue:
-	return ScatterSphereRegion.new(center, radius)
+func get_output_ports() -> Array[ScatterPort]:
+	return [ScatterPort.new(&"region", "Region", ScatterValueTypeRegistry.REGULAR_REGION)]
 
 
-func get_preview_lines() -> PackedVector3Array:
-	var result := PackedVector3Array()
-	for edge in ScatterSphereRegion.new(center, radius).get_edges():
-		result.append(edge.a)
-		result.append(edge.b)
-	return result
+func evaluate_value(context: ScatterEvaluationContext, _inputs: ScatterNodeInputs) -> ScatterValue:
+	return freeze_regular_region(context, ScatterSphereRegion.new(center, radius))

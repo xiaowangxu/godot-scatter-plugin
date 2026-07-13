@@ -2,6 +2,10 @@
 class_name ScatterEdgeContinuousNode
 extends ScatterPlacementSourceNode
 
+
+func get_input_ports() -> Array[ScatterPort]:
+	return [ScatterPort.new(&"path", "Path", ScatterValueTypeRegistry.PATH)]
+
 @export_range(0.001, 1000000.0, 0.1) var item_length := 2.0
 @export var ignore_slopes := false
 
@@ -18,13 +22,12 @@ func get_color() -> Color:
 	return Color("4b9b72")
 
 
-func evaluate(context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterValue:
+func evaluate_value(context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterValue:
 	var buffer := input_instances(context, inputs)
-	ScatterCreationOps.append_edges_continuous(
+	ScatterCreationOps.append_path_continuous(
 		buffer,
-		context.region,
+		inputs.path(),
 		item_length,
-		ignore_slopes,
 		context.maximum_instances,
 	)
 	return buffer

@@ -35,13 +35,13 @@ func region(port_id: StringName = &"region") -> ScatterRegionValue:
 	return first(port_id) as ScatterRegionValue
 
 
-func instances(port_id: StringName = &"instances") -> ScatterInstanceBuffer:
-	return first(port_id) as ScatterInstanceBuffer
+func shape(port_id: StringName = &"shape") -> ScatterShapeValue:
+	return first(port_id) as ScatterShapeValue
 
 
-func scatter_sets(port_id: StringName = &"sets") -> Array[ScatterSetValue]:
-	var result: Array[ScatterSetValue] = []
-	for value in all(port_id):
-		if value is ScatterSetValue:
-			result.append(value)
-	return result
+func path(port_id: StringName = &"path") -> ScatterPathValue:
+	return first(port_id) as ScatterPathValue
+
+
+func instances(port_id: StringName = &"instances") -> ScatterInstances:
+	return first(port_id) as ScatterInstances

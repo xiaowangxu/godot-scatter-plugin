@@ -2,6 +2,10 @@
 class_name ScatterEdgeEvenNode
 extends ScatterPlacementSourceNode
 
+
+func get_input_ports() -> Array[ScatterPort]:
+	return [ScatterPort.new(&"path", "Path", ScatterValueTypeRegistry.PATH)]
+
 @export_range(0.001, 1000000.0, 0.1) var spacing := 1.0
 @export var offset := 0.0
 @export var align_to_path := false
@@ -19,11 +23,11 @@ func get_color() -> Color:
 	return Color("4b9b72")
 
 
-func evaluate(context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterValue:
+func evaluate_value(context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterValue:
 	var buffer := input_instances(context, inputs)
-	ScatterCreationOps.append_edges_even(
+	ScatterCreationOps.append_path_even(
 		buffer,
-		context.region,
+		inputs.path(),
 		spacing,
 		offset,
 		align_to_path,

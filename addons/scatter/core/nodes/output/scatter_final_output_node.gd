@@ -12,7 +12,7 @@ func get_caption() -> String:
 
 
 func get_category() -> StringName:
-	return &"Group"
+	return &"Output"
 
 
 func get_color() -> Color:
@@ -20,18 +20,22 @@ func get_color() -> Color:
 
 
 func get_input_ports() -> Array[ScatterPort]:
-	return [ScatterPort.new(&"sets", "Scatter Sets", ScatterPort.ValueType.SCATTER_SET, true)]
+	return [ScatterPort.new(&"instances", "Instances", ScatterValueTypeRegistry.INSTANCES, true)]
 
 
 func get_output_ports() -> Array[ScatterPort]:
-	return []
+	return [ScatterPort.new(&"result", "Result", ScatterValueTypeRegistry.INSTANCES, false, false, false)]
 
 
-func evaluate(context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterValue:
-	var combined := ScatterInstanceBuffer.new()
-	var sets := inputs.scatter_sets(&"sets")
-	for scatter_set in sets:
-		combined.append_buffer(scatter_set.instances, context.maximum_instances)
+func evaluate_value(context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterValue:
+	var combined := ScatterInstances.new()
+	for value in inputs.all(&"instances"):
+		if not value is ScatterInstances:
+			continue
+		var before := combined.transforms.size()
+		combined.append_instances(value as ScatterInstances, context.maximum_instances)
+		if before + (value as ScatterInstances).transforms.size() > context.maximum_instances:
+			context.add_warning(&"instance_limit", node_id, "Final Output truncated instances at the build limit.", {"limit": context.maximum_instances})
 		if combined.transforms.size() >= context.maximum_instances:
 			break
 	combined.normalize()

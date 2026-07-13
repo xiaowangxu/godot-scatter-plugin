@@ -2,80 +2,70 @@
 class_name ScatterGizmoPlugin
 extends EditorNode3DGizmoPlugin
 
-var _brush_previews: Dictionary[int, Dictionary] = {}
 var _undo_redo: EditorUndoRedoManager
-var _path_changed: Callable
+var _changed: Callable
 var _graph_provider: Callable
-var _active_path_target_id := 0
-var _active_path_node_id := 0
+var _active_target_id := 0
+var _active_node_id := 0
+var _extension: ScatterNodeEditorExtension
+var _context: ScatterNodeEditorContext
+var _brush_previews: Dictionary = {}
 
 
 func _init() -> void:
 	create_material("region", Color(0.28, 0.82, 0.72, 0.95))
+	create_material("path", Color(0.28, 0.82, 0.72, 0.95))
 	create_material("paint", Color(0.22, 0.72, 1.0, 0.9))
-	create_material("disconnected", Color(0.48, 0.52, 0.58, 0.38))
+	create_material("instances", Color(0.73, 0.54, 0.93, 0.75))
 	create_material("cursor", Color(0.35, 1.0, 0.45, 1.0))
 	create_material("erase", Color(1.0, 0.28, 0.32, 1.0))
-	create_handle_material("path_handles")
+	create_handle_material("handles")
 
 
-func configure(
-		p_undo_redo: EditorUndoRedoManager,
-		p_path_changed: Callable,
-		p_graph_provider: Callable = Callable(),
-) -> void:
+func configure(p_undo_redo: EditorUndoRedoManager, p_changed: Callable, p_graph_provider: Callable = Callable()) -> void:
 	_undo_redo = p_undo_redo
-	_path_changed = p_path_changed
+	_changed = p_changed
 	_graph_provider = p_graph_provider
 
 
-func set_active_path(target: MultiMeshInstance3D, node_id: int) -> void:
-	# Editor hot reload can leave newly introduced script members as Nil on the
-	# already-instantiated plugin. Normalizing here keeps the live editor usable.
-	var previous := instance_from_id(int(_active_path_target_id)) as MultiMeshInstance3D
-	_active_path_target_id = target.get_instance_id() if is_instance_valid(target) else 0
-	_active_path_node_id = node_id
+func set_active_node(target: MultiMeshInstance3D, node_id: int) -> void:
+	var previous := instance_from_id(_active_target_id) as MultiMeshInstance3D
+	if _extension != null and _context != null:
+		_extension.on_deselected(_context)
+	_active_target_id = target.get_instance_id() if is_instance_valid(target) else 0
+	_active_node_id = node_id
+	_context = _make_context(target, node_id)
+	_extension = ScatterExtensionRegistry.create_editor_extension(_context.node.get_type_id()) if _context != null else null
+	if _extension != null:
+		_extension.on_selected(_context)
 	if is_instance_valid(previous):
 		previous.update_gizmos()
 	if is_instance_valid(target):
 		target.update_gizmos()
 
 
+func set_active_path(target: MultiMeshInstance3D, node_id: int) -> void:
+	set_active_node(target, node_id)
+
+
+func set_brush_preview(target: MultiMeshInstance3D, position: Vector3, normal: Vector3, radius: float, erase: bool) -> void:
+	if is_instance_valid(target):
+		_brush_previews[target.get_instance_id()] = {"position": position, "normal": normal, "radius": radius, "erase": erase}
+		target.update_gizmos()
+
+
+func clear_brush_preview(target: MultiMeshInstance3D) -> void:
+	if is_instance_valid(target):
+		_brush_previews.erase(target.get_instance_id())
+		target.update_gizmos()
+
+
 func _get_gizmo_name() -> String:
-	return "Scatter Regions"
-
-
-func _get_priority() -> int:
-	return 1
+	return "Scatter Selection"
 
 
 func _has_gizmo(node_3d: Node3D) -> bool:
 	return node_3d is MultiMeshInstance3D and _graph_for_target(node_3d) != null
-
-
-func set_brush_preview(
-		target: MultiMeshInstance3D,
-		position: Vector3,
-		normal: Vector3,
-		radius: float,
-		erase: bool,
-) -> void:
-	if not is_instance_valid(target):
-		return
-	_brush_previews[target.get_instance_id()] = {
-		"position": position,
-		"normal": normal,
-		"radius": radius,
-		"erase": erase,
-	}
-	target.update_gizmos()
-
-
-func clear_brush_preview(target: MultiMeshInstance3D) -> void:
-	if not is_instance_valid(target):
-		return
-	_brush_previews.erase(target.get_instance_id())
-	target.update_gizmos()
 
 
 func _redraw(gizmo: EditorNode3DGizmo) -> void:
@@ -83,124 +73,40 @@ func _redraw(gizmo: EditorNode3DGizmo) -> void:
 	var target := gizmo.get_node_3d() as MultiMeshInstance3D
 	if not is_instance_valid(target):
 		return
-	var graph := _graph_for_target(target)
-	if graph == null:
-		return
-	var connected_ids := _connected_node_ids(graph)
-	for node in graph.nodes:
-		if not node.enabled or not node is ScatterRegionNode:
-			continue
-		var lines := node.get_preview_lines()
-		if lines.is_empty():
-			continue
-		var material_name := "disconnected"
-		if connected_ids.has(node.node_id):
-			material_name = "paint" if node is ScatterPaintRegionNode else "region"
-		gizmo.add_lines(lines, get_material(material_name, gizmo), false)
-	var active_path := _active_path_for(target)
-	if active_path != null and not active_path.points.is_empty():
-		var ids := PackedInt32Array()
-		for index in active_path.points.size():
-			ids.append(index)
-		gizmo.add_handles(active_path.points, get_material("path_handles", gizmo), ids)
+	if target.get_instance_id() == _active_target_id and _extension != null and _context != null:
+		_extension.draw_gizmo(_context, ScatterGizmoSink.new(gizmo, self))
 	var preview: Dictionary = _brush_previews.get(target.get_instance_id(), {})
 	if not preview.is_empty():
-		var cursor_lines := ScatterBrushGeometry.circle(
-			preview.position,
-			preview.normal,
-			preview.radius,
-			true,
-		)
-		gizmo.add_lines(cursor_lines, get_material("erase" if preview.erase else "cursor", gizmo), false)
+		var lines := ScatterBrushGeometry.circle(preview.position, preview.normal, preview.radius, true)
+		gizmo.add_lines(lines, get_material("erase" if preview.erase else "cursor", gizmo), false)
 
 
-func _get_handle_name(gizmo: EditorNode3DGizmo, handle_id: int, _secondary: bool) -> String:
-	var target := gizmo.get_node_3d() as MultiMeshInstance3D
-	return tr("Path Point %d") % (handle_id + 1) if _active_path_for(target) != null else ""
+func _get_handle_name(_gizmo: EditorNode3DGizmo, handle_id: int, _secondary: bool) -> String:
+	return _extension.get_handle_name(_context, handle_id) if _extension != null else ""
 
 
-func _get_handle_value(gizmo: EditorNode3DGizmo, _handle_id: int, _secondary: bool) -> Variant:
-	var target := gizmo.get_node_3d() as MultiMeshInstance3D
-	var path := _active_path_for(target)
-	return path.points.duplicate() if path != null else PackedVector3Array()
+func _get_handle_value(_gizmo: EditorNode3DGizmo, handle_id: int, _secondary: bool) -> Variant:
+	return _extension.get_handle_value(_context, handle_id) if _extension != null else null
 
 
-func _set_handle(
-		gizmo: EditorNode3DGizmo,
-		handle_id: int,
-		_secondary: bool,
-		camera: Camera3D,
-		screen_position: Vector2,
-) -> void:
-	var target := gizmo.get_node_3d() as MultiMeshInstance3D
-	var path := _active_path_for(target)
-	if path == null or handle_id < 0 or handle_id >= path.points.size():
-		return
-	var current_world := target.to_global(path.points[handle_id])
-	var plane_normal := camera.global_transform.basis.z.normalized()
-	var drag_plane := Plane(plane_normal, plane_normal.dot(current_world))
-	var world_position = drag_plane.intersects_ray(
-		camera.project_ray_origin(screen_position),
-		camera.project_ray_normal(screen_position),
-	)
-	if world_position == null:
-		return
-	var points := path.points.duplicate()
-	points[handle_id] = target.to_local(world_position)
-	path.points = points
+func _set_handle(_gizmo: EditorNode3DGizmo, handle_id: int, _secondary: bool, camera: Camera3D, screen_position: Vector2) -> void:
+	if _extension != null:
+		_extension.set_handle(_context, handle_id, camera, screen_position)
+
+
+func _commit_handle(_gizmo: EditorNode3DGizmo, _handle_id: int, _secondary: bool, restore: Variant, cancel: bool) -> void:
+	if _extension != null:
+		_extension.commit_handle(_context, restore, cancel)
+
+
+func _make_context(target: MultiMeshInstance3D, node_id: int) -> ScatterNodeEditorContext:
 	var graph := _graph_for_target(target)
-	if graph != null:
-		graph.emit_changed()
-	target.update_gizmos()
-
-
-func _commit_handle(
-		gizmo: EditorNode3DGizmo,
-		_handle_id: int,
-		_secondary: bool,
-		restore: Variant,
-		cancel: bool,
-) -> void:
-	var target := gizmo.get_node_3d() as MultiMeshInstance3D
-	var path := _active_path_for(target)
-	if path == null:
-		return
-	var previous: PackedVector3Array = restore
-	if cancel:
-		path.points = previous
-		_finish_path_change(target)
-		return
-	var current := path.points.duplicate()
-	if current == previous:
-		return
-	if _undo_redo == null:
-		_finish_path_change(target)
-		return
-	_undo_redo.create_action(tr("Move Scatter Path Point"), UndoRedo.MERGE_DISABLE, target)
-	_undo_redo.add_do_property(path, &"points", current)
-	_undo_redo.add_undo_property(path, &"points", previous)
-	_undo_redo.add_do_method(self, "_finish_path_change", target)
-	_undo_redo.add_undo_method(self, "_finish_path_change", target)
-	_undo_redo.commit_action(false)
-	_finish_path_change(target)
-
-
-func _active_path_for(target: MultiMeshInstance3D) -> ScatterPathNode:
-	if not is_instance_valid(target) or target.get_instance_id() != int(_active_path_target_id):
+	var node := graph.find_node(node_id) if graph != null else null
+	if node == null:
 		return null
-	var graph := _graph_for_target(target)
-	return graph.find_node(int(_active_path_node_id)) as ScatterPathNode if graph != null else null
-
-
-func _finish_path_change(target: MultiMeshInstance3D) -> void:
-	if not is_instance_valid(target):
-		return
-	var graph := _graph_for_target(target)
-	if graph != null:
-		graph.emit_changed()
-	target.update_gizmos()
-	if _path_changed.is_valid():
-		_path_changed.call()
+	var context := ScatterNodeEditorContext.create(target, graph, node, _undo_redo)
+	context.changed = _changed
+	return context
 
 
 func _graph_for_target(target: MultiMeshInstance3D) -> ScatterGraph:
@@ -211,20 +117,3 @@ func _graph_for_target(target: MultiMeshInstance3D) -> ScatterGraph:
 		if provided is ScatterGraph:
 			return provided
 	return ScatterGraphAttachment.get_graph(target)
-
-
-func _connected_node_ids(graph: ScatterGraph) -> Dictionary[int, bool]:
-	var result: Dictionary[int, bool] = {}
-	var output := graph.final_output_node()
-	if output == null:
-		return result
-	var pending: Array[int] = [output.node_id]
-	while not pending.is_empty():
-		var node_id := pending.pop_back()
-		if result.has(node_id):
-			continue
-		result[node_id] = true
-		for connection in graph.connections:
-			if connection.to_node_id == node_id:
-				pending.append(connection.from_node_id)
-	return result

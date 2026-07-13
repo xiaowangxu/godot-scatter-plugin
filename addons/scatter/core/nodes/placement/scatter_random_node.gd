@@ -3,7 +3,10 @@ class_name ScatterRandomNode
 extends ScatterPlacementSourceNode
 
 @export_range(0, 1000000, 1) var amount := 100
-@export var restrict_height := true
+
+
+func get_input_ports() -> Array[ScatterPort]:
+	return [ScatterPort.new(&"shape", "Shape", ScatterValueTypeRegistry.SHAPE)]
 
 
 func get_type_id() -> StringName:
@@ -22,14 +25,15 @@ func supports_seed() -> bool:
 	return true
 
 
-func evaluate(context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterValue:
+func evaluate_value(context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterValue:
 	var buffer := input_instances(context, inputs)
-	ScatterCreationOps.append_random(
+	var sampling := ScatterCreationOps.append_random(
 		buffer,
-		context.region,
+		inputs.shape(),
 		amount,
-		restrict_height,
 		context.random_for(self),
 		context.maximum_instances,
 	)
+	if sampling.generated < sampling.requested:
+		context.add_warning(&"rejection_budget_exhausted", node_id, "Random sampling exhausted its deterministic rejection budget.", sampling)
 	return buffer

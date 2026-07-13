@@ -35,18 +35,7 @@ func add_node(type_id: StringName, position: Vector2) -> ScatterNode:
 		return null
 	node.node_id = graph.allocate_node_id()
 	node.graph_position = position
-	var extra_connections: Array[ScatterConnection] = []
-	if type_id == &"group":
-		var final_output := graph.final_output_node()
-		if final_output != null:
-			extra_connections.append(ScatterConnection.create(
-				node.node_id,
-				&"set",
-				final_output.node_id,
-				&"sets",
-				graph.incoming_connections(final_output.node_id, &"sets").size(),
-			))
-	_commit_restore_action(tr("Add Scatter Node"), [node], extra_connections)
+	_commit_restore_action(tr("Add Scatter Node"), [node], [])
 	return node
 
 
@@ -85,7 +74,7 @@ func connect_ports(
 		return false
 	var output_port := from_node.output_port(from_port_id)
 	var input_port := to_node.input_port(to_port_id)
-	if output_port == null or input_port == null or output_port.value_type != input_port.value_type:
+	if output_port == null or input_port == null or not ScatterValueTypeRegistry.is_assignable(output_port.type_id, input_port.type_id):
 		return false
 	if graph.would_create_cycle(from_node_id, to_node_id):
 		return false
@@ -187,18 +176,6 @@ func paste(clipboard: ScatterGraphClipboard, position: Vector2) -> Array[int]:
 	var payload := clipboard.instantiate(graph, position)
 	var created_nodes: Array = payload.nodes
 	var created_connections: Array = payload.connections
-	var final_output := graph.final_output_node()
-	var next_order := graph.incoming_connections(final_output.node_id, &"sets").size() if final_output != null else 0
-	for node in created_nodes:
-		if node.get_type_id() == &"group" and final_output != null:
-			created_connections.append(ScatterConnection.create(
-				node.node_id,
-				&"set",
-				final_output.node_id,
-				&"sets",
-				next_order,
-			))
-			next_order += 1
 	_commit_restore_action(tr("Paste Scatter Nodes"), created_nodes, created_connections)
 	var result: Array[int] = []
 	for node in created_nodes:

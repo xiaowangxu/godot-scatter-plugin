@@ -2,217 +2,185 @@
 class_name ScatterCreationOps
 extends RefCounted
 
+const REJECTION_CAP := 8_000_000
+
 
 static func append_random(
-		buffer: ScatterInstanceBuffer,
-		region: ScatterRegionValue,
+		buffer: ScatterInstances,
+		shape: ScatterShapeValue,
 		amount: int,
-		restrict_height: bool,
 		rng: RandomNumberGenerator,
 		maximum: int,
-) -> void:
-	if region == null:
-		region = ScatterEmptyRegion.new()
-	for _index in mini(maxi(amount, 0), maxi(0, maximum - buffer.transforms.size())):
-		var point := region.sample(rng, restrict_height)
-		if not point.is_finite():
-			break
-		buffer.transforms.append(Transform3D(Basis(), point))
+) -> Dictionary:
+	var requested := mini(maxi(amount, 0), maxi(0, maximum - buffer.transforms.size()))
+	var attempts := 0
+	if shape == null or shape.is_empty() or requested == 0:
+		return {"requested": requested, "generated": 0, "attempts": attempts}
+	if shape is ScatterRegularRegionValue:
+		for _index in requested:
+			buffer.add_instance(Transform3D(Basis(), (shape as ScatterRegularRegionValue).sample_local(rng.randf())))
+			attempts += 1
+	else:
+		var bounds := shape.get_bounds_local()
+		var budget := mini(REJECTION_CAP, maxi(256, requested * 32))
+		while buffer.transforms.size() < maximum and attempts < budget and requested > 0:
+			var point := _random_in_bounds(bounds, rng)
+			attempts += 1
+			if shape.contains_local(point):
+				buffer.add_instance(Transform3D(Basis(), point))
+				requested -= 1
+	var generated := mini(amount, buffer.transforms.size())
 	buffer.normalize()
+	return {"requested": amount, "generated": generated, "attempts": attempts}
 
 
-static func append_grid(
-		buffer: ScatterInstanceBuffer,
-		region: ScatterRegionValue,
-		spacing: Vector3,
-		restrict_height: bool,
-		maximum: int,
-) -> void:
-	if region == null or region.is_empty():
+static func append_grid(buffer: ScatterInstances, shape: ScatterShapeValue, spacing: Vector3, maximum: int) -> void:
+	if shape == null or shape.is_empty():
 		return
 	spacing = ScatterMath.positive_vec3(spacing)
-	var bounds := region.get_bounds()
-	var y_values: Array[float] = [bounds.get_center().y]
-	if not restrict_height:
-		y_values.clear()
-		var y := bounds.position.y
-		while y <= bounds.end.y + 0.0001:
-			y_values.append(y)
-			y += spacing.y
+	var bounds: AABB = shape.get_bounds_local()
 	var x := bounds.position.x
 	while x <= bounds.end.x + 0.0001 and buffer.transforms.size() < maximum:
-		for y in y_values:
+		var y := bounds.position.y
+		while y <= bounds.end.y + 0.0001 and buffer.transforms.size() < maximum:
 			var z := bounds.position.z
 			while z <= bounds.end.z + 0.0001 and buffer.transforms.size() < maximum:
 				var point := Vector3(x, y, z)
-				if region.contains(point):
-					buffer.transforms.append(Transform3D(Basis(), point))
+				if shape.contains_local(point):
+					buffer.add_instance(Transform3D(Basis(), point))
 				z += spacing.z
+			y += spacing.y
 		x += spacing.x
 	buffer.normalize()
 
 
 static func append_poisson(
-		buffer: ScatterInstanceBuffer,
-		region: ScatterRegionValue,
+		buffer: ScatterInstances,
+		shape: ScatterShapeValue,
 		radius: float,
-		samples_before_rejection: int,
+		candidates_per_active: int,
 		max_points: int,
-		restrict_height: bool,
 		rng: RandomNumberGenerator,
 		maximum: int,
 ) -> void:
-	if region == null or region.is_empty():
+	if shape == null or shape.is_empty():
 		return
 	radius = maxf(radius, 0.001)
-	max_points = mini(maxi(max_points, 0), maxi(0, maximum - buffer.transforms.size()))
-	var rejection := maxi(samples_before_rejection, 1)
-	var points: Array[Vector3] = []
-	var grid: Dictionary = {}
-	var bounds := region.get_bounds()
-	var cell_size := radius / sqrt(2.0 if restrict_height else 3.0)
-	var failed := 0
-	while points.size() < max_points and failed < rejection * maxi(20, points.size()):
-		var candidate := region.sample(rng, restrict_height)
-		if not candidate.is_finite() or not region.contains(candidate):
-			failed += 1
-			continue
-		var relative := (candidate - bounds.position) / cell_size
-		var cell := Vector3i(
-			floori(relative.x),
-			0 if restrict_height else floori(relative.y),
-			floori(relative.z),
-		)
-		if _poisson_cell_valid(candidate, cell, grid, radius, restrict_height):
-			points.append(candidate)
-			var bucket: Array = grid.get(cell, [])
-			bucket.append(candidate)
-			grid[cell] = bucket
-			failed = 0
-		else:
-			failed += 1
-	for point in points:
-		buffer.transforms.append(Transform3D(Basis(), point))
-	buffer.normalize()
-
-
-static func append_edges_random(
-		buffer: ScatterInstanceBuffer,
-		region: ScatterRegionValue,
-		instance_count: int,
-		align_to_path: bool,
-		rng: RandomNumberGenerator,
-		maximum: int,
-) -> void:
-	var edges := region.get_edges() if region != null else []
-	if edges.is_empty():
+	var target_count := mini(maxi(max_points, 0), maxi(0, maximum - buffer.transforms.size()))
+	if target_count == 0:
 		return
-	var first_new := buffer.transforms.size()
-	var amount := mini(maxi(instance_count, 0), maxi(0, maximum - first_new))
-	for _index in amount:
-		var edge: ScatterEdge = edges[rng.randi_range(0, edges.size() - 1)]
-		_append_edge_transform(buffer, edge, rng.randf(), align_to_path)
-	_remove_new_outside(buffer, first_new, region)
+	var bounds := shape.get_bounds_local()
+	var cell_size := radius / sqrt(3.0)
+	var grid: Dictionary = {}
+	var points: Array[Vector3] = []
+	var active: Array[int] = []
+	var initial := _find_initial(shape, bounds, rng)
+	if not initial.is_finite():
+		return
+	points.append(initial)
+	active.append(0)
+	grid[_cell(initial, bounds.position, cell_size)] = 0
+	while not active.is_empty() and points.size() < target_count:
+		var active_slot := rng.randi_range(0, active.size() - 1)
+		var center := points[active[active_slot]]
+		var accepted := false
+		for _candidate_index in maxi(1, candidates_per_active):
+			var direction := _random_unit_vector(rng)
+			var candidate := center + direction * rng.randf_range(radius, radius * 2.0)
+			if not bounds.has_point(candidate) or not shape.contains_local(candidate):
+				continue
+			var cell := _cell(candidate, bounds.position, cell_size)
+			if not _poisson_cell_valid(candidate, cell, points, grid, radius):
+				continue
+			points.append(candidate)
+			active.append(points.size() - 1)
+			grid[cell] = points.size() - 1
+			accepted = true
+			break
+		if not accepted:
+			active.remove_at(active_slot)
+	for point in points:
+		buffer.add_instance(Transform3D(Basis(), point))
 	buffer.normalize()
 
 
-static func append_edges_even(
-		buffer: ScatterInstanceBuffer,
-		region: ScatterRegionValue,
-		spacing: float,
-		offset: float,
-		align_to_path: bool,
-		maximum: int,
-) -> void:
+static func append_path_random(buffer: ScatterInstances, path: ScatterPathValue, count: int, align: bool, rng: RandomNumberGenerator, maximum: int) -> void:
+	if path == null or path.get_length_local() <= 0.0:
+		return
+	for _index in mini(maxi(count, 0), maxi(0, maximum - buffer.transforms.size())):
+		_append_path_transform(buffer, path, rng.randf(), align)
+	buffer.normalize()
+
+
+static func append_path_even(buffer: ScatterInstances, path: ScatterPathValue, spacing: float, offset: float, align: bool, maximum: int) -> void:
+	if path == null or path.get_length_local() <= 0.0:
+		return
 	spacing = maxf(spacing, 0.001)
-	var first_new := buffer.transforms.size()
-	for edge in region.get_edges() if region != null else []:
-		var length: float = edge.a.distance_to(edge.b)
-		var distance := offset
-		while distance <= length and buffer.transforms.size() < maximum:
-			_append_edge_transform(
-				buffer,
-				edge,
-				clampf(distance / maxf(length, 0.0001), 0.0, 1.0),
-				align_to_path,
-			)
-			distance += spacing
-	_remove_new_outside(buffer, first_new, region)
+	var distance := maxf(offset, 0.0)
+	while distance <= path.get_length_local() and buffer.transforms.size() < maximum:
+		_append_path_transform(buffer, path, distance / path.get_length_local(), align)
+		distance += spacing
 	buffer.normalize()
 
 
-static func append_edges_continuous(
-		buffer: ScatterInstanceBuffer,
-		region: ScatterRegionValue,
-		item_length: float,
-		_ignore_slopes: bool,
-		maximum: int,
-) -> void:
-	item_length = maxf(item_length, 0.001)
-	var first_new := buffer.transforms.size()
-	for edge in region.get_edges() if region != null else []:
-		var length: float = edge.a.distance_to(edge.b)
-		var count := maxi(1, ceili(length / item_length))
-		for index in count:
-			if buffer.transforms.size() >= maximum:
-				break
-			_append_edge_transform(buffer, edge, (float(index) + 0.5) / count, true)
-	_remove_new_outside(buffer, first_new, region)
+static func append_path_continuous(buffer: ScatterInstances, path: ScatterPathValue, item_length: float, maximum: int) -> void:
+	if path == null or path.get_length_local() <= 0.0:
+		return
+	var count := maxi(1, ceili(path.get_length_local() / maxf(item_length, 0.001)))
+	for index in mini(count, maxi(0, maximum - buffer.transforms.size())):
+		_append_path_transform(buffer, path, (float(index) + 0.5) / float(count), true)
 	buffer.normalize()
 
 
-static func append_single(
-		buffer: ScatterInstanceBuffer,
-		offset: Vector3,
-		rotation_degrees: Vector3,
-		scale: Vector3,
-		maximum: int,
-) -> void:
+static func append_single(buffer: ScatterInstances, offset: Vector3, rotation_degrees: Vector3, scale: Vector3, maximum: int) -> void:
 	if buffer.transforms.size() >= maximum:
 		return
-	var basis := Basis.from_euler(rotation_degrees * PI / 180.0).scaled(scale)
-	buffer.transforms.append(Transform3D(basis, offset))
+	buffer.add_instance(Transform3D(Basis.from_euler(rotation_degrees * PI / 180.0).scaled(scale), offset))
 	buffer.normalize()
 
 
-static func _poisson_cell_valid(
-		candidate: Vector3,
-		cell: Vector3i,
-		grid: Dictionary,
-		radius: float,
-		flat: bool,
-) -> bool:
-	var min_y := 0 if flat else -2
-	var max_y := 1 if flat else 3
+static func _find_initial(shape: ScatterShapeValue, bounds: AABB, rng: RandomNumberGenerator) -> Vector3:
+	if shape is ScatterRegularRegionValue:
+		return (shape as ScatterRegularRegionValue).sample_local(rng.randf())
+	for _attempt in 256:
+		var point := _random_in_bounds(bounds, rng)
+		if shape.contains_local(point):
+			return point
+	return Vector3.INF
+
+
+static func _random_in_bounds(bounds: AABB, rng: RandomNumberGenerator) -> Vector3:
+	return Vector3(
+		rng.randf_range(bounds.position.x, bounds.end.x),
+		rng.randf_range(bounds.position.y, bounds.end.y),
+		rng.randf_range(bounds.position.z, bounds.end.z),
+	)
+
+
+static func _random_unit_vector(rng: RandomNumberGenerator) -> Vector3:
+	var y := rng.randf_range(-1.0, 1.0)
+	var angle := rng.randf() * TAU
+	var planar := sqrt(maxf(0.0, 1.0 - y * y))
+	return Vector3(cos(angle) * planar, y, sin(angle) * planar)
+
+
+static func _cell(point: Vector3, origin: Vector3, cell_size: float) -> Vector3i:
+	var relative := (point - origin) / cell_size
+	return Vector3i(floori(relative.x), floori(relative.y), floori(relative.z))
+
+
+static func _poisson_cell_valid(candidate: Vector3, cell: Vector3i, points: Array[Vector3], grid: Dictionary, radius: float) -> bool:
 	for x in range(-2, 3):
-		for y in range(min_y, max_y):
+		for y in range(-2, 3):
 			for z in range(-2, 3):
-				for existing in Array(grid.get(cell + Vector3i(x, y, z), [])):
-					if candidate.distance_squared_to(existing) < radius * radius:
-						return false
+				var neighbor := cell + Vector3i(x, y, z)
+				if grid.has(neighbor) and candidate.distance_squared_to(points[int(grid[neighbor])]) < radius * radius:
+					return false
 	return true
 
 
-static func _append_edge_transform(
-		buffer: ScatterInstanceBuffer,
-		edge: ScatterEdge,
-		weight: float,
-		align: bool,
-) -> void:
-	var direction := edge.b - edge.a
+static func _append_path_transform(buffer: ScatterInstances, path: ScatterPathValue, value: float, align: bool) -> void:
 	var basis := Basis()
-	if align and direction.length_squared() > 0.000001:
-		basis = ScatterMath.basis_from_forward(direction.normalized(), Vector3.UP)
-	buffer.transforms.append(Transform3D(basis, edge.a.lerp(edge.b, weight)))
-
-
-static func _remove_new_outside(
-		buffer: ScatterInstanceBuffer,
-		first_new: int,
-		region: ScatterRegionValue,
-) -> void:
-	if region == null:
-		return
-	for index in range(buffer.transforms.size() - 1, first_new - 1, -1):
-		if not region.contains(buffer.transforms[index].origin):
-			buffer.remove_at(index)
+	if align:
+		basis = ScatterMath.basis_from_forward(path.tangent_local(value), Vector3.UP)
+	buffer.add_instance(Transform3D(basis, path.sample_local(value)))
