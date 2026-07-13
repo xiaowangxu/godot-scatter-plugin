@@ -7,6 +7,7 @@ func _init() -> void:
 	_test_external_recipe_attachment()
 	_test_type_and_cycle_rejection()
 	_test_multiple_sets_and_order()
+	_test_single_build_memoization()
 	_test_merge_disable_and_limit()
 	print("Scatter graph evaluation test passed")
 	quit()
@@ -114,6 +115,30 @@ func _test_multiple_sets_and_order() -> void:
 func _attach_recipe(target: MultiMeshInstance3D, graph: ScatterGraph, path: String) -> void:
 	assert(ScatterRecipeIO.save_graph(graph, path) == OK)
 	assert(ScatterGraphAttachment.attach(target, graph))
+
+
+func _test_single_build_memoization() -> void:
+	var graph := ScatterGraph.new()
+	var box := ScatterBoxNode.new()
+	var random := ScatterRandomNode.new()
+	random.amount = 2
+	var first_group := ScatterGroupNode.new()
+	var second_group := ScatterGroupNode.new()
+	var output := ScatterFinalOutputNode.new()
+	for node in [box, random, first_group, second_group, output]:
+		graph.add_node(node)
+	for group in [first_group, second_group]:
+		graph.connect_nodes(box.node_id, &"region", group.node_id, &"region")
+		graph.connect_nodes(random.node_id, &"instances", group.node_id, &"placement")
+		graph.connect_nodes(group.node_id, &"set", output.node_id, &"sets")
+	var target := MultiMeshInstance3D.new()
+	root.add_child(target)
+	var session := ScatterEvaluationSession.new()
+	var result := ScatterBuildService.build_target(target, graph, session)
+	assert(result.ok)
+	assert(result.instances.transforms.size() == 4)
+	assert(session.evaluation_cache_hits >= 2)
+	target.free()
 
 
 func _test_merge_disable_and_limit() -> void:

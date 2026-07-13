@@ -14,6 +14,10 @@ static func evaluate_node(
 	if active.has(node_id):
 		context.session.error = "Scatter graph contains a cycle at node %d." % node_id
 		return null
+	var cache_key := context.evaluation_cache_key(node_id)
+	if context.session.evaluation_cache.has(cache_key):
+		context.session.evaluation_cache_hits += 1
+		return _copy_cached_value(context.session.evaluation_cache[cache_key])
 	var node := graph.find_node(node_id)
 	if node == null:
 		context.session.error = "Scatter graph references missing node %d." % node_id
@@ -47,4 +51,16 @@ static func evaluate_node(
 	active.erase(node_id)
 	if result == null:
 		context.session.error = "Node %s returned no value." % node.get_caption()
+	else:
+		context.session.evaluation_cache[cache_key] = _copy_cached_value(result)
 	return result
+
+
+static func _copy_cached_value(value: ScatterValue) -> ScatterValue:
+	if value is ScatterInstanceBuffer:
+		return (value as ScatterInstanceBuffer).duplicate_buffer()
+	if value is ScatterSetValue:
+		var scatter_set := value as ScatterSetValue
+		return ScatterSetValue.new(scatter_set.instances.duplicate_buffer(), scatter_set.source_group_id)
+	# Region values are immutable evaluation products and can be shared safely.
+	return value

@@ -136,7 +136,7 @@ func move_nodes(changes: Dictionary) -> void:
 			var node := graph.find_node(int(node_id))
 			if node != null:
 				node.graph_position = changes[node_id].to
-		_notify_model_changed()
+		_notify_layout_changed()
 		return
 	undo_redo.create_action(tr("Move Scatter Nodes"), UndoRedo.MERGE_ENDS, target)
 	for node_id in changes:
@@ -145,8 +145,8 @@ func move_nodes(changes: Dictionary) -> void:
 			continue
 		undo_redo.add_do_property(node, &"graph_position", changes[node_id].to)
 		undo_redo.add_undo_property(node, &"graph_position", changes[node_id].from)
-	undo_redo.add_do_method(self, "_notify_model_changed")
-	undo_redo.add_undo_method(self, "_notify_model_changed")
+	undo_redo.add_do_method(self, "_notify_layout_changed")
+	undo_redo.add_undo_method(self, "_notify_layout_changed")
 	# GraphNode already moved visually, but the model has not. Execute the do
 	# properties now so model and view stay in the same UndoRedo transaction.
 	undo_redo.commit_action()
@@ -241,6 +241,14 @@ func _notify_model_changed() -> void:
 	if sync_views.is_valid():
 		sync_views.call()
 	_notify_common()
+
+
+func _notify_layout_changed() -> void:
+	graph.emit_changed()
+	if sync_views.is_valid():
+		sync_views.call()
+	if graph_changed.is_valid():
+		graph_changed.call()
 
 
 func _notify_common() -> void:

@@ -7,6 +7,19 @@ const PaintToolScript := preload("res://addons/scatter/editor/paint/scatter_pain
 const PathToolScript := preload("res://addons/scatter/editor/paint/scatter_path_tool.gd")
 
 
+class CallbackCounter:
+	extends RefCounted
+
+	var graph_changes := 0
+	var builds := 0
+
+	func graph_changed() -> void:
+		graph_changes += 1
+
+	func build_requested() -> void:
+		builds += 1
+
+
 func _init() -> void:
 	ScatterBuiltinRegistry.register_all()
 	var graph := ScatterGraphFactory.create_default()
@@ -14,6 +27,22 @@ func _init() -> void:
 	var recipe_path := "user://scatter_oop_recipe_test.tres"
 	assert(ScatterRecipeIO.save_graph(graph, recipe_path) == OK)
 	assert(ScatterGraphAttachment.attach(target, graph))
+	var counter := CallbackCounter.new()
+	var controller := ScatterGraphController.new()
+	controller.configure(
+		graph,
+		target,
+		null,
+		Callable(),
+		Callable(),
+		counter.graph_changed,
+		counter.build_requested,
+	)
+	var moved_node := graph.nodes[0]
+	var old_position := moved_node.graph_position
+	controller.move_nodes({moved_node.node_id: {"from": old_position, "to": old_position + Vector2(20, 10)}})
+	assert(counter.graph_changes == 1)
+	assert(counter.builds == 0)
 	var panel := ScatterPanel.new()
 	root.add_child(panel)
 	panel.set_target(target)
