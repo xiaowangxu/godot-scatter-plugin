@@ -41,6 +41,7 @@ var _pending_moves: Dictionary = {}
 var _move_commit_pending := false
 var _active_viewport_node_id := 0
 var _rebuilding_graph := false
+var _graph_rebuild_pending := false
 
 
 func _ready() -> void:
@@ -109,7 +110,7 @@ func configure(
 		graph,
 		target,
 		_undo_redo,
-		rebuild_graph,
+		_queue_graph_rebuild,
 		sync_views,
 		_emit_recipe_changed,
 		_emit_build_requested,
@@ -118,6 +119,7 @@ func configure(
 
 
 func clear_target() -> void:
+	_graph_rebuild_pending = false
 	_set_active_viewport_view(null)
 	target = null
 	graph = null
@@ -127,6 +129,12 @@ func clear_target() -> void:
 
 
 func rebuild_graph(focus_view := false) -> void:
+	# A synchronous rebuild from GraphEdit's connection signals destroys and
+	# recreates the port controls while Godot is still dispatching the same
+	# mouse event. Its subsequent port hot-zone check then sees an incomplete
+	# layout and starts a box selection. Structural edits therefore queue their
+	# visual rebuild until the input dispatch has finished.
+	_graph_rebuild_pending = false
 	if graph == null or editor_context == null:
 		clear_target()
 		return
@@ -159,7 +167,9 @@ func rebuild_graph(focus_view := false) -> void:
 		if from_view == null or to_view == null:
 			continue
 		var from_index := from_view.output_port_index(connection.from_port_id)
-		var to_index := to_view.input_port_index(connection.to_port_id, connection.order)
+		var input_port := to_view.model.input_port(connection.to_port_id)
+		var port_order := connection.order if input_port != null and input_port.variadic else 0
+		var to_index := to_view.input_port_index(connection.to_port_id, port_order)
 		if from_index >= 0 and to_index >= 0:
 			connect_node(from_view.name, from_index, to_view.name, to_index)
 	zoom = previous_zoom
@@ -176,6 +186,20 @@ func rebuild_graph(focus_view := false) -> void:
 		viewport_tool_changed.emit(0, &"")
 	if focus_view:
 		focus_recipe()
+
+
+func _queue_graph_rebuild() -> void:
+	if _graph_rebuild_pending:
+		return
+	_graph_rebuild_pending = true
+	_flush_graph_rebuild.call_deferred()
+
+
+func _flush_graph_rebuild() -> void:
+	if not _graph_rebuild_pending:
+		return
+	_graph_rebuild_pending = false
+	rebuild_graph()
 
 
 func sync_views() -> void:
@@ -247,6 +271,7 @@ func _build_add_popup() -> void:
 		remove_child(_add_popup)
 		_add_popup.queue_free()
 	_add_popup = PopupMenu.new()
+	_add_popup.search_bar_enabled = true
 	_add_popup.name = "AddNodeMenu"
 	add_child(_add_popup)
 	_popup_types.clear()

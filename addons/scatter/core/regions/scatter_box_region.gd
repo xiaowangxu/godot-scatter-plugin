@@ -13,6 +13,10 @@ func _init(p_center := Vector3.ZERO, p_size := Vector3.ONE, p_rotation_degrees :
 	rotation_degrees = p_rotation_degrees
 
 
+func get_local_transform() -> Transform3D:
+	return Transform3D(Basis.from_euler(rotation_degrees * PI / 180.0), center)
+
+
 func get_bounds_local() -> AABB:
 	var corners := ScatterMath.box_corners(center, size, rotation_degrees)
 	var result := AABB(corners[0], Vector3.ZERO)

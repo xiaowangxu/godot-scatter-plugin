@@ -18,34 +18,61 @@
 
 [sub_resource type="Resource" id="Resource_r3kxb"]
 script = ExtResource("2")
-from_node_id = 15
-from_port_id = &"path"
-to_node_id = 20
-to_port_id = &"path"
+from_node_id = 24
+from_port_id = &"instances"
+to_node_id = 25
+to_port_id = &"instances"
 
 [sub_resource type="Resource" id="Resource_7r0qy"]
 script = ExtResource("2")
-from_node_id = 20
+from_node_id = 25
 from_port_id = &"instances"
-to_node_id = 21
+to_node_id = 30
 to_port_id = &"instances"
 
 [sub_resource type="Resource" id="Resource_yhywk"]
+script = ExtResource("2")
+from_node_id = 22
+from_port_id = &"region"
+to_node_id = 33
+to_port_id = &"shape"
+
+[sub_resource type="Resource" id="Resource_woth3"]
+script = ExtResource("2")
+from_node_id = 33
+from_port_id = &"instances"
+to_node_id = 24
+to_port_id = &"instances"
+
+[sub_resource type="Resource" id="Resource_mlwl4"]
+script = ExtResource("2")
+from_node_id = 35
+from_port_id = &"region"
+to_node_id = 34
+to_port_id = &"b"
+
+[sub_resource type="Resource" id="Resource_82xxo"]
+script = ExtResource("2")
+from_node_id = 36
+from_port_id = &"instances"
+to_node_id = 18
+to_port_id = &"instances"
+
+[sub_resource type="Resource" id="Resource_arqv2"]
 script = ExtResource("2")
 from_node_id = 21
 from_port_id = &"instances"
 to_node_id = 5
 to_port_id = &"instances"
 
-[sub_resource type="Resource" id="Resource_woth3"]
+[sub_resource type="Resource" id="Resource_6imvf"]
 script = ExtResource("2")
-from_node_id = 24
-from_port_id = &"instances"
-to_node_id = 25
-to_port_id = &"instances"
-order = 1
+from_node_id = 1
+from_port_id = &"region"
+to_node_id = 34
+to_port_id = &"a"
 
-[sub_resource type="Resource" id="Resource_mlwl4"]
+[sub_resource type="Resource" id="Resource_mrk44"]
 script = ExtResource("2")
 from_node_id = 19
 from_port_id = &"instances"
@@ -53,14 +80,7 @@ to_node_id = 5
 to_port_id = &"instances"
 order = 1
 
-[sub_resource type="Resource" id="Resource_82xxo"]
-script = ExtResource("2")
-from_node_id = 25
-from_port_id = &"instances"
-to_node_id = 30
-to_port_id = &"instances"
-
-[sub_resource type="Resource" id="Resource_arqv2"]
+[sub_resource type="Resource" id="Resource_xby7h"]
 script = ExtResource("2")
 from_node_id = 30
 from_port_id = &"instances"
@@ -68,81 +88,59 @@ to_node_id = 5
 to_port_id = &"instances"
 order = 2
 
-[sub_resource type="Resource" id="Resource_6imvf"]
-script = ExtResource("2")
-from_node_id = 22
-from_port_id = &"region"
-to_node_id = 33
-to_port_id = &"shape"
-
-[sub_resource type="Resource" id="Resource_mrk44"]
-script = ExtResource("2")
-from_node_id = 33
-from_port_id = &"instances"
-to_node_id = 24
-to_port_id = &"instances"
-order = 2
-
-[sub_resource type="Resource" id="Resource_xby7h"]
-script = ExtResource("2")
-from_node_id = 1
-from_port_id = &"region"
-to_node_id = 34
-to_port_id = &"a"
-
 [sub_resource type="Resource" id="Resource_1ahdl"]
-script = ExtResource("2")
-from_node_id = 35
-from_port_id = &"region"
-to_node_id = 34
-to_port_id = &"b"
-
-[sub_resource type="Resource" id="Resource_rxiw2"]
-script = ExtResource("2")
-from_node_id = 36
-from_port_id = &"instances"
-to_node_id = 18
-to_port_id = &"instances"
-
-[sub_resource type="Resource" id="Resource_vrpv2"]
-script = ExtResource("2")
-from_node_id = 34
-from_port_id = &"shape"
-to_node_id = 36
-to_port_id = &"shape"
-
-[sub_resource type="Resource" id="Resource_42fja"]
-script = ExtResource("2")
-from_node_id = 18
-from_port_id = &"instances"
-to_node_id = 37
-to_port_id = &"instances"
-
-[sub_resource type="Resource" id="Resource_e08n3"]
 script = ExtResource("2")
 from_node_id = 37
 from_port_id = &"instances"
 to_node_id = 19
 to_port_id = &"instances"
 
+[sub_resource type="Resource" id="Resource_rxiw2"]
+script = ExtResource("2")
+from_node_id = 18
+from_port_id = &"instances"
+to_node_id = 37
+to_port_id = &"instances"
+
+[sub_resource type="Resource" id="Resource_vrpv2"]
+script = ExtResource("2")
+from_node_id = 20
+from_port_id = &"instances"
+to_node_id = 21
+to_port_id = &"instances"
+
+[sub_resource type="Resource" id="Resource_42fja"]
+script = ExtResource("2")
+from_node_id = 15
+from_port_id = &"path"
+to_node_id = 20
+to_port_id = &"path"
+
+[sub_resource type="Resource" id="Resource_e08n3"]
+script = ExtResource("2")
+from_node_id = 34
+from_port_id = &"shape"
+to_node_id = 36
+to_port_id = &"shape"
+
 [sub_resource type="Resource" id="Resource_dwg6a"]
 script = ExtResource("4")
 center = Vector3(0, 10, 0)
 size = Vector3(10, 10, 10)
 node_id = 1
-graph_position = Vector2(800, -340)
+graph_position = Vector2(320, -400)
 
 [sub_resource type="Resource" id="Resource_x3ahd"]
 script = ExtResource("8")
 node_id = 5
-graph_position = Vector2(4980, -340)
+graph_position = Vector2(5080, -460)
 
 [sub_resource type="Resource" id="Resource_iged6"]
 script = ExtResource("7_3vaxa")
 points = PackedVector3Array(-9.977931, -0.6288252, 12.267117, -1.664393, -0.5006418, -0.39618492, -11.304711, 0, 1.9807825, -7.248438, -1.9073486e-06, -9.716318, 2.8015585, -1.9073486e-06, -13.5346365, 14.597794, 0, -8.658011, 10.487839, -1.9073486e-06, 7.481697, 2.348853, 0, 17.822733)
 closed = true
 node_id = 15
-graph_position = Vector2(1600, -780)
+graph_position = Vector2(780, -740)
 
 [sub_resource type="Resource" id="Resource_7i80s"]
 script = ExtResource("8_bnepf")
@@ -172,7 +170,7 @@ graph_position = Vector2(2540, -740)
 script = ExtResource("4")
 center = Vector3(25, 5, 0)
 node_id = 22
-graph_position = Vector2(540, 500)
+graph_position = Vector2(620, 500)
 
 [sub_resource type="Resource" id="Resource_qcx7n"]
 script = ExtResource("12_7r0qy")
@@ -202,14 +200,14 @@ graph_position = Vector2(1460, 500)
 [sub_resource type="Resource" id="Resource_ybrwp"]
 script = ExtResource("13_r3kxb")
 node_id = 34
-graph_position = Vector2(1620, -300)
+graph_position = Vector2(1000, -320)
 
 [sub_resource type="Resource" id="Resource_4gj4e"]
 script = ExtResource("4")
 center = Vector3(0, 10, 0)
 size = Vector3(20, 2, 2)
 node_id = 35
-graph_position = Vector2(800, 20)
+graph_position = Vector2(320, 0)
 
 [sub_resource type="Resource" id="Resource_meryo"]
 script = ExtResource("14_7r0qy")
@@ -229,4 +227,4 @@ script = ExtResource("1")
 seed = 753431304
 nodes = Array[ExtResource("3")]([SubResource("Resource_dwg6a"), SubResource("Resource_x3ahd"), SubResource("Resource_iged6"), SubResource("Resource_7i80s"), SubResource("Resource_3xf6u"), SubResource("Resource_yxgrf"), SubResource("Resource_qm454"), SubResource("Resource_6yy5d"), SubResource("Resource_qcx7n"), SubResource("Resource_piovh"), SubResource("Resource_qoh3i"), SubResource("Resource_dl86w"), SubResource("Resource_ybrwp"), SubResource("Resource_4gj4e"), SubResource("Resource_meryo"), SubResource("Resource_komsr")])
 connections = Array[ExtResource("2")]([SubResource("Resource_r3kxb"), SubResource("Resource_7r0qy"), SubResource("Resource_yhywk"), SubResource("Resource_woth3"), SubResource("Resource_mlwl4"), SubResource("Resource_82xxo"), SubResource("Resource_arqv2"), SubResource("Resource_6imvf"), SubResource("Resource_mrk44"), SubResource("Resource_xby7h"), SubResource("Resource_1ahdl"), SubResource("Resource_rxiw2"), SubResource("Resource_vrpv2"), SubResource("Resource_42fja"), SubResource("Resource_e08n3")])
-next_node_id = 38
+next_node_id = 40

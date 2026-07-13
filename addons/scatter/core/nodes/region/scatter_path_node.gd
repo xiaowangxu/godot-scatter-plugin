@@ -35,10 +35,7 @@ func evaluate_value(context: ScatterEvaluationContext, _inputs: ScatterNodeInput
 	if space == ScatterSpace.Type.LOCAL or context == null or not is_instance_valid(context.target):
 		return ScatterPathValue.new(points, closed)
 	var transform := ScatterSpace.authored_to_local(space, context.target.global_transform if context.target.is_inside_tree() else context.target.transform)
-	var local_points := PackedVector3Array()
-	for point in points:
-		local_points.append(transform * point)
-	return ScatterPathValue.new(local_points, closed)
+	return ScatterPathValue.new(points, closed, transform)
 
 
 func evaluate_disabled_value(_context: ScatterEvaluationContext, _inputs: ScatterNodeInputs) -> ScatterValue:

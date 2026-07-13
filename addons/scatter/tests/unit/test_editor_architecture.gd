@@ -23,6 +23,9 @@ class CallbackCounter:
 func _init() -> void:
 	ScatterBuiltinRegistry.register_all()
 	var graph := ScatterGraphFactory.create_default()
+	# Non-variadic connection order is not semantic and must be repaired when a
+	# recipe working copy is opened.
+	graph.connections[0].order = 7
 	var target := MultiMeshInstance3D.new()
 	var recipe_path := "user://scatter_oop_recipe_test.tres"
 	assert(ScatterRecipeIO.save_graph(graph, recipe_path) == OK)
@@ -50,7 +53,39 @@ func _init() -> void:
 	assert(panel.graph != graph)
 	assert(panel.graph.nodes.size() == graph.nodes.size())
 	graph = panel.graph
+	assert(graph.connections[0].order == 0)
 	assert(panel.get_node("RecipeGraph") is ScatterGraphEditor)
+	var graph_editor := panel.get_node("RecipeGraph") as ScatterGraphEditor
+	assert(graph_editor.get_connection_list().size() == graph.connections.size())
+	# GraphEdit emits disconnection_request while it is still processing the
+	# mouse press. Rebuilding here would invalidate its port hot-zone lookup and
+	# turn the connection gesture into an accidental box selection.
+	var tested_connection := graph.connections[0]
+	var tested_from_view := graph_editor.get_view(tested_connection.from_node_id)
+	var tested_to_view := graph_editor.get_view(tested_connection.to_node_id)
+	var tested_from_index := tested_from_view.output_port_index(tested_connection.from_port_id)
+	var tested_to_index := tested_to_view.input_port_index(tested_connection.to_port_id, 0)
+	var connection_count := graph.connections.size()
+	graph_editor._disconnection_requested(
+		tested_from_view.name,
+		tested_from_index,
+		tested_to_view.name,
+		tested_to_index,
+	)
+	assert(graph.connections.size() == connection_count - 1)
+	assert(is_instance_valid(tested_from_view) and tested_from_view.get_parent() == graph_editor)
+	assert(graph_editor.get_connection_list().size() == connection_count)
+	await process_frame
+	assert(graph_editor.get_connection_list().size() == connection_count - 1)
+	assert(graph_editor.controller.connect_ports(
+		tested_connection.from_node_id,
+		tested_connection.from_port_id,
+		tested_connection.to_node_id,
+		tested_connection.to_port_id,
+		tested_connection.order,
+	))
+	await process_frame
+	assert(graph_editor.get_connection_list().size() == connection_count)
 	var context := ScatterEditorContext.new()
 	context.target = target
 	context.graph = graph
@@ -63,9 +98,15 @@ func _init() -> void:
 		root.add_child(view)
 		view.bind_model(prototype, context)
 		assert(view.title == prototype.get_caption())
+		var top_padding := view.get_child(0) as Control
+		var bottom_padding := view.get_child(view.get_child_count() - 1) as Control
+		assert(top_padding.name == &"ContentPaddingTop")
+		assert(bottom_padding.name == &"ContentPaddingBottom")
+		assert(top_padding.custom_minimum_size.y > 0.0)
+		assert(bottom_padding.custom_minimum_size.y == top_padding.custom_minimum_size.y)
 		view_count += 1
 		view.free()
-	assert(view_count == 34)
+	assert(view_count == 35)
 	assert(InspectorScript != null)
 	assert(GizmoScript != null)
 	var gizmo = null
@@ -82,7 +123,6 @@ func _init() -> void:
 	var paint_node := ScatterPaintRegionNode.new()
 	paint_node.strokes = [ScatterPaintStroke.create(Vector3.ZERO, Vector3.UP, 1.0)]
 	graph.add_node(paint_node, Vector2(400, 600))
-	var graph_editor := panel.get_node("RecipeGraph") as ScatterGraphEditor
 	graph_editor.rebuild_graph()
 	graph_editor.get_view(path_node.node_id).selected = true
 	await process_frame

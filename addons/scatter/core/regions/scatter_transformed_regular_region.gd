@@ -13,6 +13,10 @@ func _init(p_source: ScatterRegularRegionValue = null, p_local_from_authored := 
 	authored_from_local = local_from_authored.affine_inverse()
 
 
+func get_local_transform() -> Transform3D:
+	return local_from_authored * source.get_local_transform()
+
+
 func get_bounds_local() -> AABB:
 	var bounds := source.get_bounds_local()
 	var corners := [

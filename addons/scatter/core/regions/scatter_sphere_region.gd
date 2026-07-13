@@ -11,6 +11,10 @@ func _init(p_center := Vector3.ZERO, p_radius := 1.0) -> void:
 	radius = maxf(p_radius, 0.001)
 
 
+func get_local_transform() -> Transform3D:
+	return Transform3D(Basis.IDENTITY, center)
+
+
 func get_bounds_local() -> AABB:
 	return AABB(center - Vector3.ONE * radius, Vector3.ONE * radius * 2.0)
 

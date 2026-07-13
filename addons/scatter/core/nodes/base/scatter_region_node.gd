@@ -7,7 +7,7 @@ extends ScatterNode
 
 
 func get_category() -> StringName:
-	return &"Region"
+	return &"Shape"
 
 
 func get_input_ports() -> Array[ScatterPort]:

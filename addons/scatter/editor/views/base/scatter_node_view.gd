@@ -3,12 +3,18 @@
 class_name ScatterNodeView
 extends GraphNode
 
+const CONTENT_PADDING := 5.0
+
 var model: ScatterNode
 var context: ScatterEditorContext
 var input_port_order: Array[StringName] = []
 var output_port_order: Array[StringName] = []
 var _bindings: Array[Dictionary] = []
 var _syncing := false
+
+
+func _enter_tree() -> void:
+	set("theme_override_constants/separation", 8)
 
 
 func bind_model(p_model: ScatterNode, p_context: ScatterEditorContext) -> void:
@@ -26,10 +32,12 @@ func bind_model(p_model: ScatterNode, p_context: ScatterEditorContext) -> void:
 		enabled.toggled.connect(_enabled_changed)
 		get_titlebar_hbox().add_child(enabled)
 		_bindings.append({"property": &"enabled", "kind": "bool", "control": enabled})
+	_add_content_padding(&"ContentPaddingTop")
 	_build_ports()
 	if model.supports_seed():
 		_add_seed_controls()
 	_build_properties()
+	_add_content_padding(&"ContentPaddingBottom")
 	_tint_native_titlebar(model.get_color())
 
 
@@ -137,6 +145,14 @@ func add_port_row(
 	if output_port != null:
 		output_port_order.append(output_id)
 	return label
+
+
+func _add_content_padding(control_name: StringName) -> void:
+	var spacer := Control.new()
+	spacer.name = control_name
+	spacer.custom_minimum_size.y = CONTENT_PADDING * maxf(get_theme_default_base_scale(), 1.0)
+	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(spacer)
 
 
 func add_bool_property(property: StringName, label_text: String, tooltip := "") -> CheckBox:

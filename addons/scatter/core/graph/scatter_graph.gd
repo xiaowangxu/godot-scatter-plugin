@@ -38,7 +38,7 @@ func add_existing_nodes(restored_nodes: Array, restored_connections: Array) -> v
 	for value in restored_connections:
 		if value is ScatterConnection and not has_connection(value):
 			connections.append(value)
-	_normalize_variadic_orders()
+	normalize_connection_orders()
 	emit_changed()
 
 
@@ -80,7 +80,7 @@ func remove_nodes(node_ids: Array) -> void:
 		var connection := connections[index]
 		if node_ids.has(connection.from_node_id) or node_ids.has(connection.to_node_id):
 			connections.remove_at(index)
-	_normalize_variadic_orders()
+	normalize_connection_orders()
 	emit_changed()
 
 
@@ -131,7 +131,7 @@ func connect_nodes(
 		maxi(order, 0),
 	)
 	connections.append(connection)
-	_normalize_variadic_orders()
+	normalize_connection_orders()
 	emit_changed()
 	return connection
 
@@ -140,7 +140,7 @@ func add_connection(connection: ScatterConnection) -> void:
 	if connection == null or has_connection(connection):
 		return
 	connections.append(connection)
-	_normalize_variadic_orders()
+	normalize_connection_orders()
 	emit_changed()
 
 
@@ -150,7 +150,7 @@ func remove_connection(connection: ScatterConnection) -> void:
 	for index in range(connections.size() - 1, -1, -1):
 		if connections[index] == connection or connections[index].matches(connection):
 			connections.remove_at(index)
-	_normalize_variadic_orders()
+	normalize_connection_orders()
 	emit_changed()
 
 
@@ -171,7 +171,7 @@ func disconnect_nodes(
 			and (order < 0 or connection.order == order)
 		):
 			connections.remove_at(index)
-			_normalize_variadic_orders()
+			normalize_connection_orders()
 			emit_changed()
 			return connection
 	return null
@@ -221,12 +221,20 @@ func would_create_cycle(from_node_id: int, to_node_id: int) -> bool:
 
 
 func duplicate_graph() -> ScatterGraph:
-	return duplicate(true) as ScatterGraph
+	var result := duplicate(true) as ScatterGraph
+	if result != null:
+		result.normalize_connection_orders()
+	return result
 
 
-func _normalize_variadic_orders() -> void:
+func normalize_connection_orders() -> void:
 	var groups: Dictionary = {}
 	for connection in connections:
+		var target := find_node(connection.to_node_id)
+		var port := target.input_port(connection.to_port_id) if target != null else null
+		if port != null and not port.variadic:
+			connection.order = 0
+			continue
 		var key := "%d:%s" % [connection.to_node_id, connection.to_port_id]
 		if not groups.has(key):
 			groups[key] = []
