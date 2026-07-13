@@ -17,6 +17,7 @@ func _run() -> void:
 	_test_region_subtract(target)
 	_test_paint_union(target)
 	_test_placement_merge(target)
+	_test_multiple_scatter_sets(target)
 	_test_graph_invariants()
 
 	print("Scatter graph region tests passed")
@@ -107,6 +108,33 @@ func _test_placement_merge(target: MultiMeshInstance3D) -> void:
 	assert(result.ok and result.transforms.size() == 16, "Merge Placement must concatenate both branches once")
 
 
+func _test_multiple_scatter_sets(target: MultiMeshInstance3D) -> void:
+	var config := ScatterConfig.new()
+	config.seed = 45
+	var left_region := config.add_node(&"shape_box")
+	left_region.params.center = Vector3(-10, 0, 0)
+	var left_points := config.add_node(&"create_random")
+	left_points.params.amount = 7
+	var left_group := config.add_node(&"group")
+	var right_region := config.add_node(&"shape_box")
+	right_region.params.center = Vector3(10, 0, 0)
+	var right_points := config.add_node(&"create_random")
+	right_points.params.amount = 9
+	var right_group := config.add_node(&"group")
+	var final_output := config.add_node(&"final_output")
+	config.connect_nodes(left_region.id, 0, left_group.id, 0)
+	config.connect_nodes(left_points.id, 0, left_group.id, 1)
+	config.connect_nodes(right_region.id, 0, right_group.id, 0)
+	config.connect_nodes(right_points.id, 0, right_group.id, 1)
+	config.connect_nodes(left_group.id, 0, final_output.id, 0)
+	config.connect_nodes(right_group.id, 0, final_output.id, 1)
+	var result := ScatterGenerator.build(target, config)
+	assert(result.ok and result.transforms.size() == 16, "Final Output must concatenate every connected Scatter Set")
+	assert(result.group_counts[left_group.id] == 7 and result.group_counts[right_group.id] == 9)
+	for i in result.transforms.size():
+		assert(result.transforms[i].origin.x < 0.0 if i < 7 else result.transforms[i].origin.x > 0.0, "Scatter Sets must preserve Final Output port order")
+
+
 func _test_graph_invariants() -> void:
 	var config := ScatterConfig.new()
 	var source := config.add_node(&"shape_box")
@@ -114,9 +142,13 @@ func _test_graph_invariants() -> void:
 	var duplicate_output := config.add_node(&"output")
 	config.connect_nodes(source.id, 0, output.id, 0)
 	config.ensure_graph()
-	var outputs := 0
+	var groups := 0
+	var finals := 0
 	for entry in config.nodes:
-		if entry.get("type", "") == "output": outputs += 1
-	assert(outputs == 1, "Every recipe must keep exactly one Output node")
-	assert(config.find_node(duplicate_output.id).is_empty(), "Duplicate Outputs must be removed during validation")
+		if entry.get("type", "") == "group": groups += 1
+		if entry.get("type", "") == "final_output": finals += 1
+	assert(groups == 2, "Every legacy Output must migrate to an independent Scatter Group")
+	assert(finals == 1, "Every recipe must keep exactly one Final Output")
+	assert(config.find_node(duplicate_output.id).get("type", "") == "group", "Legacy Outputs must be preserved as Groups")
+	assert(config.connections.size() == 3, "Both migrated Groups must connect to Final Output")
 	assert(config.would_create_cycle(output.id, source.id), "Graph connections must reject cycles")

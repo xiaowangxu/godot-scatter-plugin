@@ -5,7 +5,7 @@ extends Resource
 ## Serialized directly in a MultiMeshInstance3D metadata entry. The scene keeps
 ## the recipe without requiring a custom node or script on the target.
 
-@export var version: int = 2
+@export var version: int = 3
 @export var seed: int = 0
 @export var nodes: Array[Dictionary] = []
 @export var connections: Array[Dictionary] = []
@@ -46,10 +46,35 @@ func find_node(id: int) -> Dictionary:
 
 
 func output_node() -> Dictionary:
+	return final_output_node()
+
+
+func final_output_node() -> Dictionary:
 	for entry in nodes:
-		if entry.get("type", "") == "output":
+		if entry.get("type", "") == "final_output":
 			return entry
 	return {}
+
+
+func group_nodes() -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for entry in nodes:
+		if entry.get("type", "") == "group":
+			result.append(entry)
+	return result
+
+
+func final_input_count() -> int:
+	var final_output := final_output_node()
+	if final_output.is_empty():
+		return 1
+	var highest_port := -1
+	for connection in connections:
+		if int(connection.get("to_id", 0)) == int(final_output.id):
+			highest_port = maxi(highest_port, int(connection.get("to_port", 0)))
+	# Keep one empty socket ready so adding the next Scatter Set never needs a
+	# separate UI command.
+	return maxi(1, highest_port + 2)
 
 
 func connect_nodes(from_id: int, from_port: int, to_id: int, to_port: int) -> void:
@@ -116,71 +141,86 @@ func would_create_cycle(from_id: int, to_id: int) -> bool:
 
 func ensure_graph() -> void:
 	var max_id := 0
-	var first_output_id := 0
-	var duplicate_outputs: Array[int] = []
+	var first_final_id := 0
+	var duplicate_finals: Array[int] = []
 	for entry in nodes:
 		var id := int(entry.get("id", 0))
 		max_id = maxi(max_id, id)
+		# Godot 4.7 recipes created by v2 used Output as Region + Placement.
+		# It is now a Group and keeps the same id, position and incoming wires.
 		if entry.get("type", "") == "output":
-			if first_output_id == 0: first_output_id = id
-			else: duplicate_outputs.append(id)
+			entry.type = "group"
+		elif entry.get("type", "") == "final_output":
+			if first_final_id == 0: first_final_id = id
+			else: duplicate_finals.append(id)
 	next_id = maxi(next_id, max_id + 1)
-	for id in duplicate_outputs:
+	for id in duplicate_finals:
 		remove_node(id)
 	_sanitize_connections()
-	if not output_node().is_empty():
-		version = 2
-		return
 
-	# Version 1 recipes stored a list and drew decorative wires. Migrate that
-	# list once into a real graph while retaining its execution order.
-	var legacy_nodes := nodes.duplicate()
-	var positive_regions: Array[Dictionary] = []
-	var negative_regions: Array[Dictionary] = []
-	var placements: Array[Dictionary] = []
 	var rightmost := 40.0
-	for entry in legacy_nodes:
+	for entry in nodes:
 		rightmost = maxf(rightmost, Vector2(entry.get("position", Vector2.ZERO)).x)
-		if ScatterSchema.is_region_source(entry.get("type", "")):
-			if entry.get("params", {}).get("negative", false):
-				entry["params"]["negative"] = false
-				negative_regions.append(entry)
+
+	# Version 1 recipes stored an ordered list and drew decorative wires. Turn
+	# that list into one Group before adding the aggregate Final Output.
+	if group_nodes().is_empty():
+		var legacy_nodes := nodes.duplicate()
+		var positive_regions: Array[Dictionary] = []
+		var negative_regions: Array[Dictionary] = []
+		var placements: Array[Dictionary] = []
+		for entry in legacy_nodes:
+			if ScatterSchema.is_region_source(entry.get("type", "")):
+				if entry.get("params", {}).get("negative", false):
+					entry["params"]["negative"] = false
+					negative_regions.append(entry)
+				else:
+					positive_regions.append(entry)
+			elif ScatterSchema.is_placement(entry.get("type", "")):
+				placements.append(entry)
+
+		var region_root := 0
+		for entry in positive_regions:
+			if region_root == 0:
+				region_root = int(entry.get("id", 0))
 			else:
-				positive_regions.append(entry)
-		elif ScatterSchema.is_placement(entry.get("type", "")):
-			placements.append(entry)
-
-	var region_root := 0
-	for entry in positive_regions:
-		if region_root == 0:
-			region_root = int(entry.get("id", 0))
-		else:
-			var combine := add_node(&"region_union", Vector2(rightmost + 300, 40 + region_root % 4 * 100))
-			connect_nodes(region_root, 0, combine.id, 0)
-			connect_nodes(int(entry.get("id", 0)), 0, combine.id, 1)
-			region_root = int(combine.id)
+				var combine := add_node(&"region_union", Vector2(rightmost + 300, 40 + region_root % 4 * 100))
+				connect_nodes(region_root, 0, combine.id, 0)
+				connect_nodes(int(entry.get("id", 0)), 0, combine.id, 1)
+				region_root = int(combine.id)
+				rightmost += 300
+		for entry in negative_regions:
+			if region_root == 0:
+				continue
+			var subtract := add_node(&"region_subtract", Vector2(rightmost + 300, 120))
+			connect_nodes(region_root, 0, subtract.id, 0)
+			connect_nodes(int(entry.get("id", 0)), 0, subtract.id, 1)
+			region_root = int(subtract.id)
 			rightmost += 300
-	for entry in negative_regions:
-		if region_root == 0:
-			continue
-		var subtract := add_node(&"region_subtract", Vector2(rightmost + 300, 120))
-		connect_nodes(region_root, 0, subtract.id, 0)
-		connect_nodes(int(entry.get("id", 0)), 0, subtract.id, 1)
-		region_root = int(subtract.id)
-		rightmost += 300
 
-	for i in range(placements.size() - 1):
-		connect_nodes(int(placements[i].get("id", 0)), 0, int(placements[i + 1].get("id", 0)), 0)
+		for i in range(placements.size() - 1):
+			connect_nodes(int(placements[i].get("id", 0)), 0, int(placements[i + 1].get("id", 0)), 0)
 
-	var output_position := Vector2(rightmost + 420, 160)
-	if not placements.is_empty():
-		output_position.x = maxf(output_position.x, Vector2(placements[-1].get("position", Vector2.ZERO)).x + 380)
-	var output := add_node(&"output", output_position)
-	if region_root != 0:
-		connect_nodes(region_root, 0, int(output.id), 0)
-	if not placements.is_empty():
-		connect_nodes(int(placements[-1].get("id", 0)), 0, int(output.id), 1)
-	version = 2
+		var group_position := Vector2(rightmost + 420, 160)
+		if not placements.is_empty():
+			group_position.x = maxf(group_position.x, Vector2(placements[-1].get("position", Vector2.ZERO)).x + 360)
+		var group := add_node(&"group", group_position)
+		if region_root != 0:
+			connect_nodes(region_root, 0, int(group.id), 0)
+		if not placements.is_empty():
+			connect_nodes(int(placements[-1].get("id", 0)), 0, int(group.id), 1)
+		rightmost = maxf(rightmost, group_position.x)
+
+	if final_output_node().is_empty():
+		var final_output := add_node(&"final_output", Vector2(rightmost + 340, 180))
+		var port := 0
+		for group in group_nodes():
+			connect_nodes(int(group.id), 0, int(final_output.id), port)
+			port += 1
+
+	_sanitize_connections()
+	_compact_final_inputs()
+	version = 3
 	emit_changed()
 
 
@@ -190,8 +230,22 @@ func _sanitize_connections() -> void:
 		valid_ids[int(entry.get("id", 0))] = true
 	for i in range(connections.size() - 1, -1, -1):
 		var connection := connections[i]
-		if not valid_ids.has(int(connection.get("from_id", 0))) or not valid_ids.has(int(connection.get("to_id", 0))):
+		var to_entry := find_node(int(connection.get("to_id", 0)))
+		if (not valid_ids.has(int(connection.get("from_id", 0)))
+				or not valid_ids.has(int(connection.get("to_id", 0)))
+				or ScatterSchema.is_placement_source(to_entry.get("type", ""))):
 			connections.remove_at(i)
+
+
+func _compact_final_inputs() -> void:
+	var final_output := final_output_node()
+	if final_output.is_empty(): return
+	var incoming: Array[Dictionary] = []
+	for connection in connections:
+		if int(connection.get("to_id", 0)) == int(final_output.id): incoming.append(connection)
+	incoming.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return int(a.get("to_port", 0)) < int(b.get("to_port", 0)))
+	for port in incoming.size(): incoming[port].to_port = port
 
 
 func duplicate_recipe() -> ScatterConfig:

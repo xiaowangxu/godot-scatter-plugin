@@ -31,7 +31,7 @@ func _parse_begin(object: Object) -> void:
 	open.tooltip_text = "在底部面板打开当前节点的 Region / Placement 图"
 	open.pressed.connect(func(): open_requested.emit(target)); row.add_child(open)
 	var rebuild := Button.new(); rebuild.text = "重新生成"; rebuild.disabled = not target.has_meta(ScatterGenerator.META_KEY)
-	rebuild.tooltip_text = "沿 Output 当前连接重新生成 MultiMesh 实例数据"
+	rebuild.tooltip_text = "合并最终输出连接的全部 Scatter Set，并重新生成 MultiMesh 实例数据"
 	rebuild.pressed.connect(func(): rebuild_requested.emit(target)); row.add_child(rebuild)
 	panel.add_child(row)
 	if target.has_meta(ScatterGenerator.META_KEY):

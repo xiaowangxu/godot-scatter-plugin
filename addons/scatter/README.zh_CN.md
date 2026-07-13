@@ -4,19 +4,22 @@ Scatter 只扩展 Godot 原生 `MultiMeshInstance3D`。配方作为 metadata 保
 
 ## 新版图编辑逻辑
 
-每份配方只有一个不可删除的 **输出 Output** 节点，它有两个不同类型的输入：
+每份配方可以包含多个 **散布组 Group**，以及一个不可删除的 **最终输出**：
 
-- **Region（绿色）**：决定允许在哪里散布。Box、Sphere、Path、Paint Region 可通过 Union、Intersection、Subtract 组成最终区域。
-- **Placement（紫色）**：决定如何生成及处理实例。布点节点、变换节点、过滤节点按真实连线求值。
+- 每个 **散布组** 接收一个 **Region（绿色）** 与一条 **Placement（紫色）**，并输出一个橙色的 **Scatter Set**。
+- **最终输出** 可连接任意数量的 Scatter Set，按端口顺序合并后写入当前 MultiMesh；它会始终保留一个空闲输入，便于继续连接集合。
+- Region 决定允许在哪里散布；Placement 决定如何生成、变换和过滤实例。
 
-只有连接到 Output 的分支会执行。拖动节点只改变画布布局，不会改变执行顺序；端口会阻止 Region/Placement 类型误连和循环依赖。旧版按列表排序的配方会在载入时自动迁移为这套连线图。
+Random、Grid、Poisson、Single、Edge、Proxy 等生成节点只有输出端口；变换与过滤节点保留单入单出。多条实例流只能通过 **合并布点 Merge** 的两个输入显式组合。
+
+只有通过散布组接入最终输出的分支会执行。拖动节点只改变画布布局，不会改变执行顺序；端口会阻止 Region、Placement、Scatter Set 误连和循环依赖。旧版列表配方会自动生成 Group；旧版 Output 会原位迁移为 Group，并接入新的最终输出。
 
 ## 快速开始
 
 1. 在 **项目 > 项目设置 > 插件** 中启用 **Scatter**。
 2. 创建 `MultiMeshInstance3D`，给它的 `MultiMesh` 指定 Mesh。
-3. 选中该节点，底部会自动打开 Scatter 编辑器。首次使用会创建 Box Region、Random Placement、随机旋转/缩放和 Output。
-4. 从 **＋ 添加节点** 添加节点，把绿色 Region 与紫色 Placement 分别连到 Output。
+3. 选中该节点，底部会自动打开 Scatter 编辑器。首次使用会创建 Box Region、Random Placement、随机旋转/缩放、一个散布组和最终输出。
+4. 把绿色 Region 与紫色 Placement 连到散布组；需要另一套独立规则时，再添加一个 Group。Group 会自动接入最终输出。
 5. 开启 **自动预览**，或点击 **生成预览**，在 3D 视口查看原生 MultiMesh 结果。
 
 界面按钮与参数都提供中文 Tooltip；全局种子及节点独立种子保证结果可重复。
@@ -26,9 +29,9 @@ Scatter 只扩展 Godot 原生 `MultiMeshInstance3D`。配方作为 metadata 保
 1. 添加一个或多个 **绘制区域 Paint** 节点。
 2. 选中某个 Paint 节点，或点击节点内的 **在视口绘制**。
 3. 设置笔刷半径与碰撞层，点击 **绘制区域** 后在带物理碰撞的 3D 表面按左键绘制；使用 **擦除区域** 擦除当前图层。
-4. 用 Union、Intersection、Subtract 连接多个 Paint/Shape 节点，再把组合结果接入 Output.Region。
+4. 用 Union、Intersection、Subtract 连接多个 Paint/Shape 节点，再把组合结果接入某个散布组的“区域”端口。
 
-每个 Paint 节点独立保存笔触，不再把所有手绘数据塞进一份全局列表。3D 视口会显示实时笔刷圆环、十字和法线方向；已绘制笔触持续显示轮廓。接入 Output 的 Region 使用高亮颜色，未连接的区域使用灰色提示。绘制/擦除支持 Godot UndoRedo。
+每个 Paint 节点独立保存笔触，不再把所有手绘数据塞进一份全局列表。3D 视口会显示实时笔刷圆环、十字和法线方向；已绘制笔触持续显示轮廓。接入已输出 Group 的 Region 使用高亮颜色，未连接的区域使用灰色提示。绘制/擦除支持 Godot UndoRedo。
 
 Paint Region 表示“可散布区域”，实例密度由 Random/Grid/Poisson 等 Placement 节点决定。绘制厚度用于区域相交/相减，表面偏移可让生成点离开或贴近表面。
 

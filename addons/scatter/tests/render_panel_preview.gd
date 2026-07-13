@@ -29,16 +29,21 @@ func _render() -> void:
 		{"position": Vector3(0, 0, 2), "normal": Vector3.UP, "radius": 2.5},
 		{"position": Vector3(3, 0, 0), "normal": Vector3.UP, "radius": 2.0},
 	]
-	var union := config.add_node(&"region_union", Vector2(455, 420))
 	var random := config.add_node(&"create_random", Vector2(80, 55))
-	random.params.amount = 100
-	var rotation := config.add_node(&"random_rotation", Vector2(455, 55))
-	var output := config.add_node(&"output", Vector2(850, 245))
-	config.connect_nodes(box.id, 0, union.id, 0)
-	config.connect_nodes(paint.id, 0, union.id, 1)
-	config.connect_nodes(union.id, 0, output.id, 0)
+	random.params.amount = 80
+	var rotation := config.add_node(&"random_rotation", Vector2(420, 55))
+	var paint_random := config.add_node(&"create_random", Vector2(420, 555))
+	paint_random.params.amount = 20
+	var first_group := config.add_node(&"group", Vector2(790, 150))
+	var second_group := config.add_node(&"group", Vector2(790, 520))
+	var final_output := config.add_node(&"final_output", Vector2(1120, 300))
+	config.connect_nodes(box.id, 0, first_group.id, 0)
 	config.connect_nodes(random.id, 0, rotation.id, 0)
-	config.connect_nodes(rotation.id, 0, output.id, 1)
+	config.connect_nodes(rotation.id, 0, first_group.id, 1)
+	config.connect_nodes(paint.id, 0, second_group.id, 0)
+	config.connect_nodes(paint_random.id, 0, second_group.id, 1)
+	config.connect_nodes(first_group.id, 0, final_output.id, 0)
+	config.connect_nodes(second_group.id, 0, final_output.id, 1)
 	target.set_meta(ScatterGenerator.META_KEY, config)
 
 	var panel := ScatterPanel.new()
@@ -49,9 +54,11 @@ func _render() -> void:
 	panel.rebuild_graph()
 	var result := ScatterGenerator.build(target, config)
 	ScatterGenerator.apply_to_multimesh(target, result)
-	panel.update_status()
+	panel.update_group_counts(result)
 
-	for i in 5: await process_frame
+	for i in 12: await process_frame
+	RenderingServer.force_draw()
+	await process_frame
 	var image := root.get_texture().get_image()
 	var path := "user://scatter_panel_preview.png"
 	var error := image.save_png(path)

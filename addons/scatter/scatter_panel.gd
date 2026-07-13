@@ -25,7 +25,9 @@ var _paint_button: Button
 var _erase_button: Button
 var _clear_paint_button: Button
 var _paint_count_labels: Dictionary = {}
-var _output_stats_label: Label
+var _group_count_labels: Dictionary = {}
+var _last_group_counts: Dictionary = {}
+var _final_stats_label: Label
 var _updating := false
 var _save_dialog: FileDialog
 var _load_dialog: FileDialog
@@ -45,6 +47,7 @@ func _ready() -> void:
 	_graph.right_disconnects = true
 	_graph.add_valid_connection_type(ScatterSchema.REGION_PORT_TYPE, ScatterSchema.REGION_PORT_TYPE)
 	_graph.add_valid_connection_type(ScatterSchema.PLACEMENT_PORT_TYPE, ScatterSchema.PLACEMENT_PORT_TYPE)
+	_graph.add_valid_connection_type(ScatterSchema.SCATTER_SET_PORT_TYPE, ScatterSchema.SCATTER_SET_PORT_TYPE)
 	_graph.connection_request.connect(_connection_requested)
 	_graph.disconnection_request.connect(_disconnection_requested)
 	_graph.node_selected.connect(_graph_node_selected)
@@ -111,13 +114,13 @@ func _build_toolbar() -> void:
 
 	var generate := Button.new()
 	generate.text = "生成预览"
-	generate.tooltip_text = "沿 Output 当前连接重新生成 MultiMesh 实例数据"
+	generate.tooltip_text = "求值所有连接到最终输出的 Scatter Set，并重建 MultiMesh 实例数据"
 	generate.pressed.connect(func(): build_requested.emit())
 	top.add_child(generate)
 
 	var focus := Button.new()
 	focus.text = "定位输出"
-	focus.tooltip_text = "把图视图移动到 Output 节点"
+	focus.tooltip_text = "把图视图移动到最终输出节点"
 	focus.pressed.connect(focus_output)
 	top.add_child(focus)
 
@@ -202,6 +205,8 @@ func _build_toolbar() -> void:
 
 
 func set_target(value: MultiMeshInstance3D) -> void:
+	if target != value:
+		_last_group_counts.clear()
 	target = value
 	_stop_painting()
 	if not is_instance_valid(target):
@@ -236,8 +241,10 @@ func _create_starter_recipe() -> void:
 	var scale_node := config.add_node(&"random_transform", Vector2(760, 60))
 	scale_node.params.scale = Vector3(0.2, 0.2, 0.2)
 	config.ensure_graph()
-	var output := config.output_node()
-	if not output.is_empty(): output.position = Vector2(1160, 190)
+	var groups := config.group_nodes()
+	if not groups.is_empty(): groups[0].position = Vector2(1110, 190)
+	var final_output := config.final_output_node()
+	if not final_output.is_empty(): final_output.position = Vector2(1420, 210)
 	config.emit_changed()
 
 
@@ -246,7 +253,8 @@ func rebuild_graph() -> void:
 	_updating = true
 	_clear_graph()
 	_paint_count_labels.clear()
-	_output_stats_label = null
+	_group_count_labels.clear()
+	_final_stats_label = null
 	if config == null:
 		_updating = false
 		return
@@ -254,6 +262,7 @@ func rebuild_graph() -> void:
 	for entry in config.nodes:
 		var graph_node := _make_graph_node(entry)
 		_graph.add_child(graph_node)
+		_tint_native_titlebar(graph_node, ScatterSchema.definition(entry.get("type", "")).get("color", Color.GRAY))
 	for connection in config.connections:
 		var from_name := StringName(str(connection.get("from_id", 0)))
 		var to_name := StringName(str(connection.get("to_id", 0)))
@@ -280,6 +289,21 @@ func focus_output() -> void:
 	_graph.scroll_offset = output_position - _graph.size * 0.55
 
 
+func _tint_native_titlebar(node: GraphNode, color: Color) -> void:
+	# Keep Godot's GraphNode geometry, padding, borders and selection behavior.
+	# Visual Shader nodes tint this native titlebar to identify node families.
+	var normal := node.get_theme_stylebox("titlebar")
+	if normal is StyleBoxFlat:
+		var tinted := normal.duplicate() as StyleBoxFlat
+		tinted.bg_color = color.darkened(0.38)
+		node.add_theme_stylebox_override("titlebar", tinted)
+	var selected := node.get_theme_stylebox("titlebar_selected")
+	if selected is StyleBoxFlat:
+		var tinted_selected := selected.duplicate() as StyleBoxFlat
+		tinted_selected.bg_color = color.darkened(0.27)
+		node.add_theme_stylebox_override("titlebar_selected", tinted_selected)
+
+
 func _make_graph_node(entry: Dictionary) -> GraphNode:
 	var id := int(entry.get("id", 0))
 	var type := StringName(entry.get("type", ""))
@@ -289,99 +313,84 @@ func _make_graph_node(entry: Dictionary) -> GraphNode:
 	node.title = ScatterSchema.display_title(type)
 	node.tooltip_text = ScatterSchema.description(type)
 	node.position_offset = entry.get("position", Vector2.ZERO)
-	node.custom_minimum_size.x = 305 if type != &"output" else 330
+	if ScatterSchema.is_final_output(type):
+		node.custom_minimum_size.x = 200
+	elif ScatterSchema.is_group(type):
+		node.custom_minimum_size.x = 225
+	else:
+		node.custom_minimum_size.x = 270
 	node.position_offset_changed.connect(_node_moved.bind(id, node))
 	node.delete_request.connect(_delete_node.bind(id))
-	_apply_node_theme(node, definition.get("color", Color.GRAY), type == &"output")
 
-	var info := HBoxContainer.new()
-	var type_badge := Label.new()
-	type_badge.text = "REGION" if ScatterSchema.is_region(type) else ("OUTPUT" if type == &"output" else "PLACEMENT")
-	type_badge.modulate = ScatterSchema.REGION_COLOR if ScatterSchema.is_region(type) else (Color("e8b968") if type == &"output" else ScatterSchema.PLACEMENT_COLOR)
-	type_badge.tooltip_text = ScatterSchema.description(type)
-	info.add_child(type_badge)
-	var spacer := Control.new()
-	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	info.add_child(spacer)
-	if type != &"output":
-		var enabled := CheckBox.new()
-		enabled.text = "启用"
-		enabled.button_pressed = entry.get("enabled", true)
-		enabled.tooltip_text = "关闭后该节点不参与求值；Placement 节点会直接传递上游数据。"
-		enabled.toggled.connect(_enabled_changed.bind(id))
-		info.add_child(enabled)
-		var remove := Button.new()
-		remove.text = "删除"
-		remove.flat = true
-		remove.tooltip_text = "删除此节点及与它相连的线"
-		remove.pressed.connect(_delete_node.bind(id))
-		info.add_child(remove)
-	node.add_child(info)
+	if ScatterSchema.is_final_output(type):
+		_add_final_output_rows(node)
+		return node
 
-	if type == &"output":
-		_add_output_rows(node)
+	var titlebar_controls := node.get_titlebar_hbox()
+	var enabled := CheckBox.new()
+	enabled.button_pressed = entry.get("enabled", true)
+	enabled.tooltip_text = "启用 / 停用节点"
+	enabled.toggled.connect(_enabled_changed.bind(id))
+	titlebar_controls.add_child(enabled)
+
+	if ScatterSchema.is_group(type):
+		_add_group_rows(node, id)
 		return node
 	if ScatterSchema.is_region_source(type):
 		_add_region_source_rows(node, entry)
 	elif ScatterSchema.is_region_operator(type):
-		_add_binary_rows(node, ScatterSchema.REGION_PORT_TYPE, ScatterSchema.REGION_COLOR, "区域 A", "区域 B", "组合区域")
+		_add_binary_rows(node, ScatterSchema.REGION_PORT_TYPE, ScatterSchema.REGION_COLOR, "A", "B", "区域")
 	elif type == &"placement_merge":
-		_add_binary_rows(node, ScatterSchema.PLACEMENT_PORT_TYPE, ScatterSchema.PLACEMENT_COLOR, "布点 A", "布点 B", "合并布点")
+		_add_binary_rows(node, ScatterSchema.PLACEMENT_PORT_TYPE, ScatterSchema.PLACEMENT_COLOR, "A", "B", "实例流")
+	elif ScatterSchema.is_placement_source(type):
+		_add_placement_source_row(node)
 	else:
-		_add_flow_row(node, ScatterSchema.PLACEMENT_PORT_TYPE, ScatterSchema.PLACEMENT_COLOR, "Placement  实例流")
+		_add_flow_row(node, ScatterSchema.PLACEMENT_PORT_TYPE, ScatterSchema.PLACEMENT_COLOR, "实例流")
 
-	if ScatterSchema.is_placement(type) and type != &"placement_merge":
+	if ScatterSchema.uses_seed(type):
 		_add_seed_row(node, entry)
 	_add_parameter_rows(node, entry, definition)
 	return node
 
 
-func _apply_node_theme(node: GraphNode, color: Color, is_output: bool) -> void:
-	var panel := StyleBoxFlat.new()
-	panel.bg_color = Color("20242b") if not is_output else Color("2b281f")
-	panel.border_color = Color(color, 0.9)
-	panel.set_border_width_all(1 if not is_output else 2)
-	panel.set_corner_radius_all(8)
-	panel.content_margin_left = 10
-	panel.content_margin_right = 10
-	panel.content_margin_bottom = 9
-	node.add_theme_stylebox_override("panel", panel)
-	var selected := panel.duplicate() as StyleBoxFlat
-	selected.border_color = color.lightened(0.25)
-	selected.set_border_width_all(3)
-	node.add_theme_stylebox_override("panel_selected", selected)
-	var titlebar := StyleBoxFlat.new()
-	titlebar.bg_color = color.darkened(0.58)
-	titlebar.set_corner_radius_all(8)
-	titlebar.corner_radius_bottom_left = 0
-	titlebar.corner_radius_bottom_right = 0
-	titlebar.content_margin_left = 10
-	titlebar.content_margin_right = 10
-	titlebar.content_margin_top = 6
-	titlebar.content_margin_bottom = 6
-	node.add_theme_stylebox_override("titlebar", titlebar)
-	node.add_theme_stylebox_override("titlebar_selected", titlebar)
-
-
-func _add_output_rows(node: GraphNode) -> void:
-	var intro := Label.new()
-	intro.text = "Region 定义在哪里散布\nPlacement 定义怎样生成实例"
-	intro.tooltip_text = ScatterSchema.description(&"output")
-	node.add_child(intro)
+func _add_group_rows(node: GraphNode, id: int) -> void:
+	var output_label := Label.new()
+	output_label.text = "散布"
+	output_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	node.add_child(output_label)
+	node.set_slot(node.get_child_count() - 1, false, 0, Color.WHITE, true, ScatterSchema.SCATTER_SET_PORT_TYPE, ScatterSchema.SCATTER_SET_COLOR)
 	var region_row := Label.new()
-	region_row.text = "Region  区域"
-	region_row.tooltip_text = "连接一个 Region 源或 Region 运算结果"
+	region_row.text = "区域"
+	region_row.tooltip_text = "这个 Scatter Set 使用的区域"
 	node.add_child(region_row)
-	node.set_slot(1, true, ScatterSchema.REGION_PORT_TYPE, ScatterSchema.REGION_COLOR, false, 0, Color.WHITE)
+	node.set_slot(node.get_child_count() - 1, true, ScatterSchema.REGION_PORT_TYPE, ScatterSchema.REGION_COLOR, false, 0, Color.WHITE)
 	var placement_row := Label.new()
-	placement_row.text = "Placement  布点"
-	placement_row.tooltip_text = "连接一条 Placement 数据流"
+	placement_row.text = "布点"
+	placement_row.tooltip_text = "生成和处理实例的布点流"
 	node.add_child(placement_row)
-	node.set_slot(2, true, ScatterSchema.PLACEMENT_PORT_TYPE, ScatterSchema.PLACEMENT_COLOR, false, 0, Color.WHITE)
-	_output_stats_label = Label.new()
-	_output_stats_label.text = "等待生成预览"
-	_output_stats_label.modulate = Color("bfc5cf")
-	node.add_child(_output_stats_label)
+	node.set_slot(node.get_child_count() - 1, true, ScatterSchema.PLACEMENT_PORT_TYPE, ScatterSchema.PLACEMENT_COLOR, false, 0, Color.WHITE)
+	
+	var count := Label.new()
+	count.text = str(_last_group_counts.get(id, "—"))
+	count.modulate = Color("d8b36f")
+	count.tooltip_text = "此 Scatter Set 的实例数量"
+	count.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_group_count_labels[id] = count
+	node.add_child(count)
+
+func _add_final_output_rows(node: GraphNode) -> void:
+	for port in config.final_input_count():
+		var row := Label.new()
+		row.text = "集合 %d" % (port + 1)
+		row.tooltip_text = "连接一个散布组输出的 Scatter Set"
+		node.add_child(row)
+		node.set_slot(node.get_child_count() - 1, true, ScatterSchema.SCATTER_SET_PORT_TYPE, ScatterSchema.SCATTER_SET_COLOR, false, 0, Color.WHITE)
+	_final_stats_label = Label.new()
+	_final_stats_label.text = "%d 个实例" % (target.multimesh.instance_count if is_instance_valid(target) and target.multimesh != null else 0)
+	_final_stats_label.modulate = Color("d8b36f")
+	_final_stats_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_final_stats_label.tooltip_text = "写入当前 MultiMesh 的实例总数"
+	node.add_child(_final_stats_label)
 
 
 func _add_region_source_rows(node: GraphNode, entry: Dictionary) -> void:
@@ -389,7 +398,7 @@ func _add_region_source_rows(node: GraphNode, entry: Dictionary) -> void:
 	if entry.get("type", "") == "paint_region":
 		var paint_actions := HBoxContainer.new()
 		var activate := Button.new()
-		activate.text = "在视口绘制"
+		activate.text = "绘制"
 		activate.tooltip_text = "把这个绘制图层设为当前图层并启用 3D 笔刷"
 		activate.pressed.connect(_activate_paint_node.bind(id, true))
 		paint_actions.add_child(activate)
@@ -401,9 +410,9 @@ func _add_region_source_rows(node: GraphNode, entry: Dictionary) -> void:
 		node.add_child(paint_actions)
 		_update_paint_count(id)
 	var output_row := Label.new()
-	output_row.text = "区域输出  Region"
+	output_row.text = "区域"
 	output_row.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	output_row.tooltip_text = "连接到 Region 运算节点或 Output.Region"
+	output_row.tooltip_text = "连接到区域运算节点或散布组"
 	node.add_child(output_row)
 	node.set_slot(node.get_child_count() - 1, false, 0, Color.WHITE, true, ScatterSchema.REGION_PORT_TYPE, ScatterSchema.REGION_COLOR)
 
@@ -426,11 +435,20 @@ func _add_binary_rows(node: GraphNode, port_type: int, color: Color, a_text: Str
 	node.set_slot(node.get_child_count() - 1, false, 0, Color.WHITE, true, port_type, color)
 
 
+func _add_placement_source_row(node: GraphNode) -> void:
+	var row := Label.new()
+	row.text = "实例流"
+	row.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	row.tooltip_text = "输出新生成的实例；需要组合多条实例流时使用“合并布点”节点。"
+	node.add_child(row)
+	node.set_slot(node.get_child_count() - 1, false, 0, Color.WHITE, true, ScatterSchema.PLACEMENT_PORT_TYPE, ScatterSchema.PLACEMENT_COLOR)
+
+
 func _add_flow_row(node: GraphNode, port_type: int, color: Color, text: String) -> void:
 	var row := Label.new()
 	row.text = text
-	row.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	row.tooltip_text = "左侧接收上游数据，右侧输出处理后的实例数据。没有上游时从空数据开始。"
+	row.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	row.tooltip_text = "左侧接收上游实例，右侧输出处理后的实例。"
 	node.add_child(row)
 	node.set_slot(node.get_child_count() - 1, true, port_type, color, true, port_type, color)
 
@@ -466,7 +484,7 @@ func _add_parameter_rows(node: GraphNode, entry: Dictionary, definition: Diction
 		var row := HBoxContainer.new()
 		var label := Label.new()
 		label.text = ScatterSchema.parameter_label(key)
-		label.custom_minimum_size.x = 108
+		label.custom_minimum_size.x = 78
 		label.tooltip_text = ScatterSchema.parameter_tooltip(key)
 		row.add_child(label)
 		var control := _make_parameter_control(id, key, spec, params.get(key, spec.get("default")))
@@ -555,14 +573,17 @@ func _find_entry(id: int) -> Dictionary:
 
 func _input_type(entry: Dictionary, port: int) -> int:
 	var type := StringName(entry.get("type", ""))
-	if type == &"output": return ScatterSchema.REGION_PORT_TYPE if port == 0 else ScatterSchema.PLACEMENT_PORT_TYPE
+	if ScatterSchema.is_group(type): return ScatterSchema.REGION_PORT_TYPE if port == 0 else ScatterSchema.PLACEMENT_PORT_TYPE
+	if ScatterSchema.is_final_output(type): return ScatterSchema.SCATTER_SET_PORT_TYPE
 	if ScatterSchema.is_region_operator(type): return ScatterSchema.REGION_PORT_TYPE
+	if ScatterSchema.is_placement_source(type): return 0
 	if ScatterSchema.is_placement(type): return ScatterSchema.PLACEMENT_PORT_TYPE
 	return 0
 
 
 func _output_type(entry: Dictionary, _port: int) -> int:
 	var type := StringName(entry.get("type", ""))
+	if ScatterSchema.is_group(type): return ScatterSchema.SCATTER_SET_PORT_TYPE
 	if ScatterSchema.is_region(type): return ScatterSchema.REGION_PORT_TYPE
 	if ScatterSchema.is_placement(type): return ScatterSchema.PLACEMENT_PORT_TYPE
 	return 0
@@ -578,7 +599,10 @@ func _connection_requested(from_node: StringName, from_port: int, to_node: Strin
 	var from_type := _output_type(from_entry, from_port)
 	var to_type := _input_type(to_entry, to_port)
 	if from_type == 0 or from_type != to_type:
-		update_status("连接失败：Region 只能连接绿色端口，Placement 只能连接紫色端口。")
+		if ScatterSchema.is_placement_source(to_entry.get("type", "")):
+			update_status("生成节点没有输入；请使用“合并布点”组合多条实例流。")
+			return
+		update_status("连接失败：区域、布点与 Scatter Set 必须连接同色端口。")
 		return
 	if config.would_create_cycle(from_id, to_id):
 		update_status("连接失败：该连线会产生循环依赖。")
@@ -587,15 +611,18 @@ func _connection_requested(from_node: StringName, from_port: int, to_node: Strin
 	if not old.is_empty():
 		_graph.disconnect_node(StringName(str(old.from_id)), int(old.from_port), to_node, to_port)
 	config.connect_nodes(from_id, from_port, to_id, to_port)
-	_graph.connect_node(from_node, from_port, to_node, to_port)
-	_recipe_modified(false)
+	var rebuild := ScatterSchema.is_final_output(to_entry.get("type", ""))
+	if not rebuild: _graph.connect_node(from_node, from_port, to_node, to_port)
+	_recipe_modified(rebuild)
 
 
 func _disconnection_requested(from_node: StringName, from_port: int, to_node: StringName, to_port: int) -> void:
 	if config == null: return
+	var to_entry := _find_entry(String(to_node).to_int())
 	config.disconnect_nodes(String(from_node).to_int(), from_port, String(to_node).to_int(), to_port)
-	_graph.disconnect_node(from_node, from_port, to_node, to_port)
-	_recipe_modified(false)
+	var rebuild := ScatterSchema.is_final_output(to_entry.get("type", ""))
+	if not rebuild: _graph.disconnect_node(from_node, from_port, to_node, to_port)
+	_recipe_modified(rebuild)
 
 
 func _graph_node_selected(node: Node) -> void:
@@ -670,8 +697,8 @@ func _node_moved(id: int, graph_node: GraphNode) -> void:
 func _delete_node(id: int) -> void:
 	if config == null: return
 	var entry := _find_entry(id)
-	if entry.get("type", "") == "output":
-		update_status("Output 是配方的唯一出口，不能删除。")
+	if ScatterSchema.is_final_output(entry.get("type", "")):
+		update_status("最终输出是配方的唯一出口，不能删除。")
 		return
 	if active_paint_node_id == id:
 		_stop_painting()
@@ -691,6 +718,12 @@ func _on_add_type(id: int) -> void:
 	var position := _graph.scroll_offset + _graph.size * 0.35
 	var entry := config.add_node(_popup_types[id], position)
 	if entry.get("type", "") == "paint_region": active_paint_node_id = int(entry.id)
+	if ScatterSchema.is_group(entry.get("type", "")):
+		var final_output := config.final_output_node()
+		if not final_output.is_empty():
+			var port := 0
+			while not config.incoming_connection(int(final_output.id), port).is_empty(): port += 1
+			config.connect_nodes(int(entry.id), 0, int(final_output.id), port)
 	_recipe_modified(true)
 
 
@@ -859,6 +892,14 @@ func _recipe_modified(rebuild_visual: bool) -> void:
 	if config.auto_rebuild: build_requested.emit()
 
 
+func update_group_counts(result: Dictionary) -> void:
+	_last_group_counts = Dictionary(result.get("group_counts", {})).duplicate()
+	for id in _group_count_labels:
+		var label = _group_count_labels[id]
+		if is_instance_valid(label): label.text = str(_last_group_counts.get(id, 0))
+	update_status()
+
+
 func update_status(message := "") -> void:
 	if not message.is_empty():
 		_status_label.text = message
@@ -871,9 +912,10 @@ func update_status(message := "") -> void:
 		if entry.get("type", "") == "paint_region":
 			paint_layers += 1
 			paint_strokes += Array(entry.get("params", {}).get("strokes", [])).size()
-	_status_label.text = "%d 个实例 · %d 个绘制图层 / %d 笔 · 配方保存在当前 MultiMeshInstance3D" % [count, paint_layers, paint_strokes]
-	if is_instance_valid(_output_stats_label):
-		_output_stats_label.text = "当前输出：%d 个实例" % count
+	var group_count := config.group_nodes().size()
+	_status_label.text = "%d 个实例 · %d 个散布组 · %d 个绘制图层 / %d 笔 · 配方保存在当前 MultiMeshInstance3D" % [count, group_count, paint_layers, paint_strokes]
+	if is_instance_valid(_final_stats_label):
+		_final_stats_label.text = "%d 个实例" % count
 
 
 func _path_to_text(points: PackedVector3Array) -> String:

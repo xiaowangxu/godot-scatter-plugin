@@ -100,7 +100,7 @@ func _build_one(target: MultiMeshInstance3D) -> void:
 		push_error("Scatter: %s" % result.get("error", "Unknown error"))
 		return
 	ScatterGenerator.apply_to_multimesh(target, result)
-	if _panel.target == target: _panel.update_status()
+	if _panel.target == target: _panel.update_group_counts(result)
 	_mark_scene_changed()
 
 

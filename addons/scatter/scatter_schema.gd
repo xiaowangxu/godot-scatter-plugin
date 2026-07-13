@@ -4,10 +4,13 @@ extends RefCounted
 
 const REGION_PORT_TYPE := 1
 const PLACEMENT_PORT_TYPE := 2
+const SCATTER_SET_PORT_TYPE := 3
 const REGION_COLOR := Color("55b8a6")
 const PLACEMENT_COLOR := Color("b889e8")
+const SCATTER_SET_COLOR := Color("e1a85a")
 
 const CATEGORIES := {
+	"集合 Group": [&"group"],
 	"区域 Region": [&"shape_box", &"shape_sphere", &"shape_path", &"paint_region", &"region_union", &"region_intersection", &"region_subtract"],
 	"布点 Placement": [&"create_random", &"create_grid", &"create_poisson", &"edge_random", &"edge_even", &"edge_continuous", &"single", &"placement_merge"],
 	"变换 Transform": [&"array", &"transform", &"position", &"rotation", &"scale", &"random_transform", &"random_rotation", &"look_at", &"snap", &"relax", &"clusterize", &"project"],
@@ -16,7 +19,10 @@ const CATEGORIES := {
 }
 
 static var DEFINITIONS := {
-	"output": {"title": "Output", "color": Color("d9aa56"), "params": {}},
+	# `output` is retained only so v2 recipes can be loaded and migrated.
+	"output": {"title": "Legacy Output", "color": Color("d9aa56"), "params": {}},
+	"group": {"title": "Scatter Group", "color": Color("c48745"), "params": {}},
+	"final_output": {"title": "Final Output", "color": Color("d9aa56"), "params": {}},
 	"paint_region": {"title": "Paint Region", "color": Color("3fae9a"), "params": {
 		"strokes": {"type": "paint_data", "default": [], "hidden": true},
 		"depth": {"type": "float", "default": 0.35, "min": 0.01, "max": 1000.0, "step": 0.05},
@@ -210,7 +216,23 @@ static func is_placement_source(type: StringName) -> bool:
 
 static func is_placement(type: StringName) -> bool:
 	var value := String(type)
-	return value != "output" and not is_region(value) and DEFINITIONS.has(value)
+	return value not in ["output", "group", "final_output"] and not is_region(value) and DEFINITIONS.has(value)
+
+
+static func is_group(type: StringName) -> bool:
+	return String(type) == "group"
+
+
+static func is_final_output(type: StringName) -> bool:
+	return String(type) == "final_output"
+
+
+static func uses_seed(type: StringName) -> bool:
+	return String(type) in [
+		"create_random", "create_poisson", "edge_random", "array",
+		"random_transform", "random_rotation", "remove_random",
+		"random_color", "random_custom_data",
+	]
 
 
 static func display_title(type: StringName) -> String:
@@ -230,43 +252,47 @@ static func parameter_tooltip(key: StringName) -> String:
 
 
 const TITLES_ZH := {
-	"output": "输出 Output",
-	"shape_box": "盒形区域 Box",
-	"shape_sphere": "球形区域 Sphere",
-	"shape_path": "路径区域 Path",
-	"paint_region": "绘制区域 Paint",
-	"region_union": "区域合并 Union",
-	"region_intersection": "区域相交 Intersection",
-	"region_subtract": "区域相减 Subtract",
-	"create_random": "随机布点 Random",
-	"create_grid": "网格布点 Grid",
-	"create_poisson": "泊松布点 Poisson",
-	"edge_random": "边缘随机 Edge Random",
-	"edge_even": "边缘等距 Edge Even",
-	"edge_continuous": "边缘连续 Edge Continuous",
-	"single": "单点 Single",
-	"placement_merge": "合并布点 Merge",
-	"array": "阵列 Array",
-	"transform": "变换 Transform",
-	"position": "位置 Position",
-	"rotation": "旋转 Rotation",
-	"scale": "缩放 Scale",
-	"random_transform": "随机变换 Random Transform",
-	"random_rotation": "随机旋转 Random Rotation",
-	"look_at": "朝向目标 Look At",
-	"snap": "步进吸附 Snap",
-	"relax": "松弛 Relax",
-	"clusterize": "纹理聚类 Cluster",
-	"project": "投射到表面 Project",
-	"remove_outside": "移除区域外 Outside",
-	"remove_random": "随机移除 Random Remove",
-	"proxy": "引用配方 Proxy",
-	"random_color": "随机颜色 Color",
-	"random_custom_data": "随机自定义数据 Custom Data",
+	"output": "散布组",
+	"group": "散布组",
+	"final_output": "最终输出",
+	"shape_box": "盒形区域",
+	"shape_sphere": "球形区域",
+	"shape_path": "路径区域",
+	"paint_region": "绘制区域",
+	"region_union": "区域合并",
+	"region_intersection": "区域相交",
+	"region_subtract": "区域相减",
+	"create_random": "随机布点",
+	"create_grid": "网格布点",
+	"create_poisson": "泊松布点",
+	"edge_random": "边缘随机",
+	"edge_even": "边缘等距",
+	"edge_continuous": "边缘连续",
+	"single": "单点",
+	"placement_merge": "合并布点",
+	"array": "阵列",
+	"transform": "变换",
+	"position": "位置",
+	"rotation": "旋转",
+	"scale": "缩放",
+	"random_transform": "随机变换",
+	"random_rotation": "随机旋转",
+	"look_at": "朝向目标",
+	"snap": "步进吸附",
+	"relax": "松弛",
+	"clusterize": "纹理聚类",
+	"project": "投射到表面",
+	"remove_outside": "移除区域外",
+	"remove_random": "随机移除",
+	"proxy": "引用配方",
+	"random_color": "随机颜色",
+	"random_custom_data": "随机自定义数据",
 }
 
 const DESCRIPTIONS_ZH := {
-	"output": "唯一输出节点。Region 决定允许散布的位置，Placement 决定如何生成和处理实例。",
+	"output": "旧版输出节点；打开时会自动迁移为散布组。",
+	"group": "组合一个区域与一条布点流，输出一个 Scatter Set。",
+	"final_output": "聚合任意数量的 Scatter Set，并写入当前 MultiMesh。",
 	"shape_box": "一个可旋转的盒形体积区域。",
 	"shape_sphere": "一个球形体积区域。",
 	"shape_path": "沿折线路径生成具有厚度的区域，也可用于边缘布点。",
@@ -274,12 +300,12 @@ const DESCRIPTIONS_ZH := {
 	"region_union": "A 或 B 中的任意位置都属于结果区域。",
 	"region_intersection": "只有同时位于 A 与 B 中的位置才属于结果区域。",
 	"region_subtract": "从区域 A 中扣除区域 B。",
-	"create_random": "在 Output 的 Region 中随机生成指定数量的点。",
-	"create_grid": "在 Output 的 Region 中生成规则三维或平面网格。",
+	"create_random": "在所属散布组的区域中随机生成指定数量的点。",
+	"create_grid": "在所属散布组的区域中生成规则三维或平面网格。",
 	"create_poisson": "生成彼此保持最小距离的自然分布点。",
 	"placement_merge": "合并两条 Placement 分支。",
 	"project": "使用物理射线把实例投射到碰撞表面。",
-	"remove_outside": "移除不属于 Output Region 的实例。",
+	"remove_outside": "移除不属于所属散布组区域的实例。",
 }
 
 const PARAMETER_LABELS_ZH := {

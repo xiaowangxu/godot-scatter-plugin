@@ -1,6 +1,6 @@
 # Scatter Plugin
 
-面向 Godot 4+ 的原生 `MultiMeshInstance3D` 可视化散布插件。新版编辑器使用真实 Region / Placement 数据流与唯一 Output 节点，支持多个独立 Paint Region 图层、区域布尔组合、中文 Tooltip、3D 笔刷预览以及完整实例 Transform / Color / Custom Data 生成。
+面向 Godot 4+ 的原生 `MultiMeshInstance3D` 可视化散布插件。新版编辑器让 Region / Placement 在 **散布组 Group** 中形成独立 Scatter Set，再由唯一的最终输出聚合多个集合；同时支持独立 Paint Region 图层、区域布尔组合、中文 Tooltip、3D 笔刷预览以及完整实例 Transform / Color / Custom Data 生成。
 
 - [中文使用说明](addons/scatter/README.zh_CN.md)
 - [English documentation](addons/scatter/README.md)

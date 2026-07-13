@@ -32,31 +32,53 @@ static func build(target: MultiMeshInstance3D, config: ScatterConfig, visited :=
 		return {"ok": false, "error": "Proxy cycle detected."}
 	visited[target_id] = true
 	config.ensure_graph()
-	var output := config.output_node()
-	if output.is_empty():
+	var final_output := config.final_output_node()
+	if final_output.is_empty():
 		visited.erase(target_id)
-		return {"ok": false, "error": "Scatter graph has no Output node."}
+		return {"ok": false, "error": "Scatter graph has no Final Output node."}
 
-	var region_connection := config.incoming_connection(int(output.id), 0)
-	var region := {"type": "empty"}
-	if not region_connection.is_empty():
-		region = _compile_region(config, int(region_connection.from_id), {})
-		if region.has("error"):
+	var group_connections: Array[Dictionary] = []
+	for connection in config.connections:
+		if int(connection.get("to_id", 0)) == int(final_output.id):
+			group_connections.append(connection)
+	group_connections.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return int(a.get("to_port", 0)) < int(b.get("to_port", 0)))
+
+	var combined := _empty_result()
+	var group_counts := {}
+	var manual_available := true
+	var evaluated_group := false
+	for connection in group_connections:
+		var group := config.find_node(int(connection.get("from_id", 0)))
+		if group.is_empty() or not ScatterSchema.is_group(group.get("type", "")):
 			visited.erase(target_id)
-			return {"ok": false, "error": region.error}
-
-	var placement_connection := config.incoming_connection(int(output.id), 1)
-	var data := _manual_result(config)
-	if not placement_connection.is_empty():
-		data = _evaluate_placement(config, int(placement_connection.from_id), region, target, visited, {}, true)
+			return {"ok": false, "error": "Final Output accepts Scatter Set values from Group nodes only."}
+		if not group.get("enabled", true):
+			group_counts[int(group.id)] = 0
+			continue
+		var data := _evaluate_group(config, group, target, visited, manual_available)
 		if not data.get("ok", false):
 			visited.erase(target_id)
 			return data
-	var transforms: Array[Transform3D] = data.transforms
-	var colors: Array[Color] = data.colors
-	var custom_data: Array[Color] = data.custom_data
-	if transforms.size() > MAX_GENERATED:
-		transforms.resize(MAX_GENERATED)
+		manual_available = false
+		evaluated_group = true
+		var remaining: int = MAX_GENERATED - combined.transforms.size()
+		if data.transforms.size() > remaining:
+			data.transforms.resize(remaining)
+			_resize_colors(data.colors, remaining, Color.WHITE)
+			_resize_colors(data.custom_data, remaining, Color(0, 0, 0, 0))
+		group_counts[int(group.id)] = data.transforms.size()
+		combined.transforms.append_array(data.transforms)
+		combined.colors.append_array(data.colors)
+		combined.custom_data.append_array(data.custom_data)
+		if combined.transforms.size() >= MAX_GENERATED:
+			break
+	if not evaluated_group:
+		combined = _manual_result(config)
+
+	var transforms: Array[Transform3D] = combined.transforms
+	var colors: Array[Color] = combined.colors
+	var custom_data: Array[Color] = combined.custom_data
 	_resize_colors(colors, transforms.size(), Color.WHITE)
 	_resize_colors(custom_data, transforms.size(), Color(0, 0, 0, 0))
 
@@ -66,7 +88,23 @@ static func build(target: MultiMeshInstance3D, config: ScatterConfig, visited :=
 		"transforms": transforms,
 		"colors": colors,
 		"custom_data": custom_data,
+		"group_counts": group_counts,
 	}
+
+
+static func _evaluate_group(config: ScatterConfig, group: Dictionary, target: MultiMeshInstance3D, visited: Dictionary, allow_manual: bool) -> Dictionary:
+	var group_id := int(group.get("id", 0))
+	var region_connection := config.incoming_connection(group_id, 0)
+	var region := {"type": "empty"}
+	if not region_connection.is_empty():
+		region = _compile_region(config, int(region_connection.from_id), {})
+		if region.has("error"):
+			return {"ok": false, "error": region.error}
+
+	var placement_connection := config.incoming_connection(group_id, 1)
+	if placement_connection.is_empty():
+		return _manual_result(config) if allow_manual else _empty_result()
+	return _evaluate_placement(config, int(placement_connection.from_id), region, target, visited, {}, allow_manual)
 
 
 static func _manual_result(config: ScatterConfig) -> Dictionary:

@@ -69,11 +69,15 @@ func _redraw(gizmo: EditorNode3DGizmo) -> void:
 
 func _connected_region_ids(config: ScatterConfig) -> Dictionary:
 	var result := {}
-	var output := config.output_node()
-	if output.is_empty(): return result
-	var incoming := config.incoming_connection(int(output.id), 0)
-	if incoming.is_empty(): return result
-	var pending: Array[int] = [int(incoming.from_id)]
+	var final_output := config.final_output_node()
+	if final_output.is_empty(): return result
+	var pending: Array[int] = []
+	for connection in config.connections:
+		if int(connection.get("to_id", 0)) != int(final_output.id): continue
+		var group := config.find_node(int(connection.get("from_id", 0)))
+		if group.is_empty() or not group.get("enabled", true) or not ScatterSchema.is_group(group.get("type", "")): continue
+		var region_connection := config.incoming_connection(int(group.id), 0)
+		if not region_connection.is_empty(): pending.append(int(region_connection.from_id))
 	while not pending.is_empty():
 		var id := pending.pop_back()
 		if result.has(id): continue
