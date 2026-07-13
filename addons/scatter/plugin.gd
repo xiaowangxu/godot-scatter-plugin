@@ -24,7 +24,7 @@ func _enter_tree() -> void:
 	_panel.set_undo_redo(get_undo_redo())
 	_bottom_button = add_control_to_bottom_panel(_panel, tr("Scatter"))
 	_panel.build_requested.connect(_build_current)
-	_panel.recipe_changed.connect(_mark_scene_changed)
+	_panel.recipe_changed.connect(_recipe_changed)
 	_panel.viewport_tool_changed.connect(_viewport_tool_changed)
 	_inspector = InspectorScript.new()
 	_inspector.open_requested.connect(_open_target)
@@ -135,7 +135,7 @@ func _build_target(target: MultiMeshInstance3D, mark_unsaved := true) -> void:
 
 
 func _build_one(target: MultiMeshInstance3D, mark_unsaved := true) -> void:
-	var graph := ScatterGraphAttachment.get_graph(target)
+	var graph := _panel.get_graph_for_build(target)
 	if graph == null:
 		return
 	var result := ScatterBuildService.build_target(target, graph)
@@ -162,7 +162,7 @@ func _find_dependents(source: MultiMeshInstance3D) -> Array[MultiMeshInstance3D]
 		candidates.append_array(candidate.get_children())
 		if not candidate is MultiMeshInstance3D:
 			continue
-		var graph := ScatterGraphAttachment.get_graph(candidate)
+		var graph := _panel.get_graph_for_build(candidate)
 		if graph == null:
 			continue
 		for node in graph.nodes:
@@ -232,6 +232,12 @@ func _forward_3d_gui_input(camera: Camera3D, event: InputEvent) -> int:
 func _mark_scene_changed(mark_unsaved := true) -> void:
 	if mark_unsaved and get_editor_interface().has_method("mark_scene_as_unsaved"):
 		get_editor_interface().mark_scene_as_unsaved()
+	if is_instance_valid(_target):
+		_target.notify_property_list_changed()
+		_target.update_gizmos()
+
+
+func _recipe_changed() -> void:
 	if is_instance_valid(_target):
 		_target.notify_property_list_changed()
 		_target.update_gizmos()

@@ -23,6 +23,8 @@ var _status: ScatterStatusBar
 var _save_dialog: FileDialog
 var _load_dialog: FileDialog
 var _updating := false
+var _edit_sessions: Dictionary[String, ScatterRecipeEditSession] = {}
+var _edit_session: ScatterRecipeEditSession
 
 
 func _ready() -> void:
@@ -58,6 +60,7 @@ func set_target(value: MultiMeshInstance3D) -> void:
 		_graph_editor.clear_target()
 	target = value
 	graph = null
+	_edit_session = null
 	if not is_node_ready():
 		return
 	_bind_target()
@@ -67,22 +70,40 @@ func _bind_target() -> void:
 	_updating = true
 	if not is_instance_valid(target):
 		graph = null
+		_edit_session = null
 		_graph_editor.clear_target()
 		_status.set_title(tr("Scatter"))
 		_toolbar.set_editor_enabled(false)
+		_toolbar.set_recipe_dirty(false)
 		update_status(tr("Select a MultiMeshInstance3D to edit its Scatter graph."))
 		_updating = false
 		return
 	_status.set_title(tr("%s") % target.name)
-	graph = ScatterGraphAttachment.get_graph(target)
-	if graph == null:
+	var attached_graph := ScatterGraphAttachment.get_graph(target)
+	if attached_graph == null:
+		graph = null
+		_edit_session = null
 		_graph_editor.clear_target()
 		_toolbar.set_editor_enabled(false)
+		_toolbar.set_recipe_dirty(false)
 		update_status(tr("Configure or load a Scatter recipe from the Inspector."))
 		_updating = false
 		return
+	var recipe_path := attached_graph.resource_path
+	_edit_session = _edit_sessions.get(recipe_path)
+	if _edit_session == null:
+		_edit_session = ScatterRecipeEditSession.create(attached_graph)
+		if _edit_session == null:
+			_graph_editor.clear_target()
+			_toolbar.set_editor_enabled(false)
+			update_status(tr("Could not create a recipe editing session."))
+			_updating = false
+			return
+		_edit_sessions[recipe_path] = _edit_session
+	graph = _edit_session.working_graph
 	_graph_editor.configure(target, graph, _undo_redo)
 	_toolbar.set_editor_enabled(true)
+	_toolbar.set_recipe_dirty(_edit_session.dirty)
 	_sync_toolbar()
 	update_status()
 	_updating = false
@@ -248,11 +269,14 @@ func _update_paint_ui() -> void:
 
 
 func _save_recipe() -> void:
-	if graph == null:
+	if graph == null or _edit_session == null:
 		return
-	var error := ScatterRecipeIO.save_graph(graph)
+	var error := _edit_session.save()
+	if error == OK and is_instance_valid(target):
+		ScatterGraphAttachment.attach(target, _edit_session.source_graph)
+		_toolbar.set_recipe_dirty(false)
 	update_status(
-		tr("Recipe saved to %s") % graph.resource_path
+		tr("Recipe saved to %s") % _edit_session.recipe_path
 		if error == OK
 		else tr("Could not save recipe: %s") % error_string(error)
 	)
@@ -315,14 +339,16 @@ func _set_graph_on_target(owner: MultiMeshInstance3D, value: ScatterGraph) -> vo
 		update_status(tr("Could not link the selected Scatter recipe."))
 		return
 	if target == owner:
-		graph = value
-		_graph_editor.configure(target, graph, _undo_redo)
-		_sync_toolbar()
-		update_status()
+		graph = null
+		_edit_session = null
+		_bind_target()
 		recipe_changed.emit()
 
 
 func _on_recipe_changed() -> void:
+	if _edit_session != null:
+		_edit_session.mark_dirty()
+		_toolbar.set_recipe_dirty(true)
 	recipe_changed.emit()
 	if is_instance_valid(target):
 		target.update_gizmos()
@@ -332,6 +358,16 @@ func update_group_counts(group_counts: Dictionary) -> void:
 	if _graph_editor != null:
 		_graph_editor.update_group_counts(group_counts)
 	update_status()
+
+
+func get_graph_for_build(owner: MultiMeshInstance3D) -> ScatterGraph:
+	if owner == target and graph != null:
+		return graph
+	var attached := ScatterGraphAttachment.get_graph(owner)
+	if attached == null:
+		return null
+	var session: ScatterRecipeEditSession = _edit_sessions.get(attached.resource_path)
+	return session.working_graph if session != null else attached
 
 
 func update_status(message := "") -> void:

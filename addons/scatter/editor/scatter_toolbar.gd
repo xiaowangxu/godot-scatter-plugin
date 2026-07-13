@@ -14,6 +14,7 @@ signal auto_build_changed(value: bool)
 
 var _seed: SpinBox
 var _auto_build: CheckBox
+var _save: Button
 var _syncing := false
 
 
@@ -35,6 +36,16 @@ func sync_graph(seed: int, auto_build: bool) -> void:
 	_seed.value = seed
 	_auto_build.button_pressed = auto_build
 	_syncing = false
+
+
+func set_recipe_dirty(value: bool) -> void:
+	if _save != null:
+		_save.text = tr("Save *") if value else tr("Save")
+		_save.tooltip_text = (
+			tr("Save unsaved recipe changes to the linked .tres file")
+			if value
+			else tr("Save the linked Scatter recipe")
+		)
 
 
 func _build_actions() -> void:
@@ -62,7 +73,7 @@ func _build_actions() -> void:
 	#_add_button(row, "Add Node", add_requested.emit, "Add a node to the Scatter graph")
 	#_add_button(row, "Focus", focus_requested.emit)
 	#_add_button(row, "Output", output_requested.emit)
-	_add_button(row, "Save", save_requested.emit)
+	_save = _add_button(row, "Save", save_requested.emit)
 	_add_button(row, "Load", load_requested.emit)
 
 

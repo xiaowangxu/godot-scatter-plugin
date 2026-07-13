@@ -47,7 +47,9 @@ func _init() -> void:
 	root.add_child(panel)
 	panel.set_target(target)
 	await process_frame
-	assert(panel.graph == graph)
+	assert(panel.graph != graph)
+	assert(panel.graph.nodes.size() == graph.nodes.size())
+	graph = panel.graph
 	assert(panel.get_node("RecipeGraph") is ScatterGraphEditor)
 	var context := ScatterEditorContext.new()
 	context.target = target
@@ -95,9 +97,25 @@ func _init() -> void:
 	assert(panel.active_viewport_tool.is_empty())
 	paint.stop()
 	assert(not paint.get_toolbar().visible)
-	assert(ScatterRecipeIO.save_graph(graph, recipe_path) == OK)
-	var loaded := ScatterRecipeIO.load_graph(recipe_path)
+	graph.seed = 99173
+	panel._on_recipe_changed()
+	assert(panel.get_graph_for_build(target) == graph)
+	assert(ScatterGraphAttachment.get_graph(target).seed != graph.seed)
+	var before_save := ResourceLoader.load(
+		recipe_path,
+		"ScatterGraph",
+		ResourceLoader.CACHE_MODE_IGNORE,
+	) as ScatterGraph
+	assert(before_save != null and before_save.seed != graph.seed)
+	panel._save_recipe()
+	var loaded := ResourceLoader.load(
+		recipe_path,
+		"ScatterGraph",
+		ResourceLoader.CACHE_MODE_IGNORE,
+	) as ScatterGraph
 	assert(loaded != null)
+	assert(loaded.seed == graph.seed)
+	assert(ScatterGraphAttachment.get_graph(target).seed == graph.seed)
 	assert(loaded.nodes.size() == graph.nodes.size())
 	assert(loaded.connections.size() == graph.connections.size())
 	var loaded_paint := loaded.find_node(paint_node.node_id) as ScatterPaintRegionNode
