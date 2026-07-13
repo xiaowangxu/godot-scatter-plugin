@@ -5,6 +5,7 @@ extends EditorNode3DGizmoPlugin
 var _brush_previews: Dictionary[int, Dictionary] = {}
 var _undo_redo: EditorUndoRedoManager
 var _path_changed: Callable
+var _graph_provider: Callable
 var _active_path_target_id := 0
 var _active_path_node_id := 0
 
@@ -18,9 +19,14 @@ func _init() -> void:
 	create_handle_material("path_handles")
 
 
-func configure(p_undo_redo: EditorUndoRedoManager, p_path_changed: Callable) -> void:
+func configure(
+		p_undo_redo: EditorUndoRedoManager,
+		p_path_changed: Callable,
+		p_graph_provider: Callable = Callable(),
+) -> void:
 	_undo_redo = p_undo_redo
 	_path_changed = p_path_changed
+	_graph_provider = p_graph_provider
 
 
 func set_active_path(target: MultiMeshInstance3D, node_id: int) -> void:
@@ -44,7 +50,7 @@ func _get_priority() -> int:
 
 
 func _has_gizmo(node_3d: Node3D) -> bool:
-	return node_3d is MultiMeshInstance3D and ScatterGraphAttachment.get_graph(node_3d) != null
+	return node_3d is MultiMeshInstance3D and _graph_for_target(node_3d) != null
 
 
 func set_brush_preview(
@@ -77,7 +83,7 @@ func _redraw(gizmo: EditorNode3DGizmo) -> void:
 	var target := gizmo.get_node_3d() as MultiMeshInstance3D
 	if not is_instance_valid(target):
 		return
-	var graph := ScatterGraphAttachment.get_graph(target)
+	var graph := _graph_for_target(target)
 	if graph == null:
 		return
 	var connected_ids := _connected_node_ids(graph)
@@ -142,7 +148,7 @@ func _set_handle(
 	var points := path.points.duplicate()
 	points[handle_id] = target.to_local(world_position)
 	path.points = points
-	var graph := ScatterGraphAttachment.get_graph(target)
+	var graph := _graph_for_target(target)
 	if graph != null:
 		graph.emit_changed()
 	target.update_gizmos()
@@ -182,19 +188,29 @@ func _commit_handle(
 func _active_path_for(target: MultiMeshInstance3D) -> ScatterPathNode:
 	if not is_instance_valid(target) or target.get_instance_id() != int(_active_path_target_id):
 		return null
-	var graph := ScatterGraphAttachment.get_graph(target)
+	var graph := _graph_for_target(target)
 	return graph.find_node(int(_active_path_node_id)) as ScatterPathNode if graph != null else null
 
 
 func _finish_path_change(target: MultiMeshInstance3D) -> void:
 	if not is_instance_valid(target):
 		return
-	var graph := ScatterGraphAttachment.get_graph(target)
+	var graph := _graph_for_target(target)
 	if graph != null:
 		graph.emit_changed()
 	target.update_gizmos()
 	if _path_changed.is_valid():
 		_path_changed.call()
+
+
+func _graph_for_target(target: MultiMeshInstance3D) -> ScatterGraph:
+	if not is_instance_valid(target):
+		return null
+	if _graph_provider.is_valid():
+		var provided = _graph_provider.call(target)
+		if provided is ScatterGraph:
+			return provided
+	return ScatterGraphAttachment.get_graph(target)
 
 
 func _connected_node_ids(graph: ScatterGraph) -> Dictionary[int, bool]:

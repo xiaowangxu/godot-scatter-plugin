@@ -24,11 +24,13 @@ var _save_dialog: FileDialog
 var _load_dialog: FileDialog
 var _updating := false
 var _edit_sessions: Dictionary[String, ScatterRecipeEditSession] = {}
+var _edit_session_contexts: Dictionary[String, WeakRef] = {}
 var _edit_session: ScatterRecipeEditSession
 
 
 func _ready() -> void:
 	name = "ScatterEditor"
+	set_shortcut_context(self)
 	custom_minimum_size = Vector2(0, 350)
 	size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_toolbar = ScatterToolbar.new()
@@ -46,6 +48,35 @@ func _ready() -> void:
 	_build_file_dialogs()
 	if is_instance_valid(target):
 		_bind_target()
+
+
+func _shortcut_input(event: InputEvent) -> void:
+	if not _is_recipe_save_shortcut(event) or not _has_editor_keyboard_focus():
+		return
+	if graph == null or _edit_session == null:
+		return
+	_save_recipe()
+	get_viewport().set_input_as_handled()
+
+
+func _is_recipe_save_shortcut(event: InputEvent) -> bool:
+	return (
+		event is InputEventKey
+		and event.pressed
+		and not event.echo
+		and event.keycode == KEY_S
+		and event.is_command_or_control_pressed()
+		and not event.shift_pressed
+		and not event.alt_pressed
+	)
+
+
+func _has_editor_keyboard_focus() -> bool:
+	var viewport := get_viewport()
+	if viewport == null:
+		return false
+	var focus_owner := viewport.gui_get_focus_owner()
+	return focus_owner != null and (focus_owner == self or is_ancestor_of(focus_owner))
 
 
 func set_undo_redo(value: EditorUndoRedoManager) -> void:
@@ -90,7 +121,9 @@ func _bind_target() -> void:
 		_updating = false
 		return
 	var recipe_path := attached_graph.resource_path
-	_edit_session = _edit_sessions.get(recipe_path)
+	_prune_edit_sessions()
+	var session_key := _edit_session_key(target, recipe_path)
+	_edit_session = _edit_sessions.get(session_key)
 	if _edit_session == null:
 		_edit_session = ScatterRecipeEditSession.create(attached_graph)
 		if _edit_session == null:
@@ -99,7 +132,8 @@ func _bind_target() -> void:
 			update_status(tr("Could not create a recipe editing session."))
 			_updating = false
 			return
-		_edit_sessions[recipe_path] = _edit_session
+		_edit_sessions[session_key] = _edit_session
+		_edit_session_contexts[session_key] = weakref(_edit_context_for(target))
 	graph = _edit_session.working_graph
 	_graph_editor.configure(target, graph, _undo_redo)
 	_toolbar.set_editor_enabled(true)
@@ -366,8 +400,33 @@ func get_graph_for_build(owner: MultiMeshInstance3D) -> ScatterGraph:
 	var attached := ScatterGraphAttachment.get_graph(owner)
 	if attached == null:
 		return null
-	var session: ScatterRecipeEditSession = _edit_sessions.get(attached.resource_path)
+	_prune_edit_sessions()
+	var session_key := _edit_session_key(owner, attached.resource_path)
+	var session: ScatterRecipeEditSession = _edit_sessions.get(session_key)
 	return session.working_graph if session != null else attached
+
+
+func _edit_session_key(owner: MultiMeshInstance3D, recipe_path: String) -> String:
+	var context := _edit_context_for(owner)
+	var context_id := context.get_instance_id() if is_instance_valid(context) else 0
+	return "%d::%s" % [context_id, recipe_path]
+
+
+func _edit_context_for(owner: MultiMeshInstance3D) -> Node:
+	if not is_instance_valid(owner):
+		return null
+	var context: Node = owner
+	while is_instance_valid(context.owner):
+		context = context.owner
+	return context
+
+
+func _prune_edit_sessions() -> void:
+	for key in _edit_session_contexts.keys():
+		var context_ref: WeakRef = _edit_session_contexts.get(key)
+		if context_ref == null or context_ref.get_ref() == null:
+			_edit_session_contexts.erase(key)
+			_edit_sessions.erase(key)
 
 
 func update_status(message := "") -> void:

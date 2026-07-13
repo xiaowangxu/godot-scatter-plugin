@@ -44,7 +44,7 @@ func prepare_input_context(
 func evaluate(context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterValue:
 	var instances := inputs.instances(&"placement")
 	if instances == null:
-		instances = context.take_manual_instances()
+		instances = ScatterInstanceBuffer.new()
 	else:
 		instances = instances.duplicate_buffer()
 	instances.limit(context.maximum_instances)

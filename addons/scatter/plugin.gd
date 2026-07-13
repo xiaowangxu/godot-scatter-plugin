@@ -34,7 +34,7 @@ func _enter_tree() -> void:
 	_inspector.load_requested.connect(_load_target_recipe)
 	add_inspector_plugin(_inspector)
 	_gizmo = GizmoScript.new()
-	_gizmo.configure(get_undo_redo(), _panel._path_data_changed)
+	_gizmo.configure(get_undo_redo(), _panel._path_data_changed, _panel.get_graph_for_build)
 	add_node_3d_gizmo_plugin(_gizmo)
 	_paint_tool = PaintToolScript.new()
 	_paint_tool.configure(_panel, _gizmo, get_undo_redo(), _build_current, _mark_scene_changed)

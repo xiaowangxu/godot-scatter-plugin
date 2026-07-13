@@ -29,7 +29,6 @@ static func create_recipe_from_target(target: MultiMeshInstance3D, path: String)
 	if not is_instance_valid(target) or path.is_empty():
 		return null
 	var graph := ScatterGraphFactory.create_default()
-	ScatterGraphAttachment.adopt_multimesh(target, graph)
 	if save_graph(graph, path) != OK:
 		return null
 	return load_graph(path)

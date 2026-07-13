@@ -5,6 +5,7 @@ func _init() -> void:
 	ScatterBuiltinRegistry.register_all()
 	_test_demo_build_and_determinism()
 	_test_external_recipe_attachment()
+	_test_empty_output_has_no_implicit_instances()
 	_test_type_and_cycle_rejection()
 	_test_multiple_sets_and_order()
 	_test_single_build_memoization()
@@ -58,14 +59,17 @@ func _test_type_and_cycle_rejection() -> void:
 
 
 func _test_external_recipe_attachment() -> void:
-	var graph := ScatterGraphFactory.create_default()
 	var target := MultiMeshInstance3D.new()
 	var multimesh := MultiMesh.new()
 	multimesh.transform_format = MultiMesh.TRANSFORM_3D
 	multimesh.instance_count = 1
 	target.multimesh = multimesh
 	var path := "user://scatter_graph_external_attachment.tres"
-	_attach_recipe(target, graph, path)
+	var graph := ScatterRecipeIO.create_recipe_from_target(target, path)
+	assert(graph != null)
+	assert(target.multimesh.instance_count == 1)
+	assert(not _has_property(graph, &"manual_instances"))
+	assert(ScatterGraphAttachment.attach(target, graph))
 	assert(ScatterGraphAttachment.get_graph(target) == graph)
 	assert(ScatterGraphAttachment.get_recipe_path(target) == path)
 	assert(not graph.resource_local_to_scene)
@@ -74,6 +78,23 @@ func _test_external_recipe_attachment() -> void:
 	assert(target.multimesh.instance_count == 1)
 	assert(ResourceLoader.exists(path, "ScatterGraph"))
 	target.free()
+
+
+func _test_empty_output_has_no_implicit_instances() -> void:
+	var graph := ScatterGraphFactory.create_empty()
+	var target := MultiMeshInstance3D.new()
+	root.add_child(target)
+	var result := ScatterBuildService.build_target(target, graph)
+	assert(result.ok)
+	assert(result.instances.transforms.is_empty())
+	target.free()
+
+
+func _has_property(object: Object, property: StringName) -> bool:
+	for descriptor in object.get_property_list():
+		if descriptor.name == property:
+			return true
+	return false
 
 
 func _test_multiple_sets_and_order() -> void:

@@ -101,13 +101,29 @@ func _init() -> void:
 	panel._on_recipe_changed()
 	assert(panel.get_graph_for_build(target) == graph)
 	assert(ScatterGraphAttachment.get_graph(target).seed != graph.seed)
+	var reopened_target := MultiMeshInstance3D.new()
+	assert(ScatterGraphAttachment.attach(reopened_target, ScatterGraphAttachment.get_graph(target)))
+	panel.set_target(reopened_target)
+	assert(panel.graph.seed != graph.seed)
+	panel.set_target(target)
+	assert(panel.graph == graph)
+	reopened_target.free()
 	var before_save := ResourceLoader.load(
 		recipe_path,
 		"ScatterGraph",
 		ResourceLoader.CACHE_MODE_IGNORE,
 	) as ScatterGraph
 	assert(before_save != null and before_save.seed != graph.seed)
-	panel._save_recipe()
+	var save_shortcut := InputEventKey.new()
+	save_shortcut.keycode = KEY_S
+	save_shortcut.ctrl_pressed = true
+	save_shortcut.pressed = true
+	graph_editor.grab_focus()
+	await process_frame
+	assert(panel._has_editor_keyboard_focus())
+	assert(panel._is_recipe_save_shortcut(save_shortcut))
+	root.push_input(save_shortcut)
+	await process_frame
 	var loaded := ResourceLoader.load(
 		recipe_path,
 		"ScatterGraph",

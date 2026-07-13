@@ -43,18 +43,3 @@ static func detach(target: MultiMeshInstance3D) -> void:
 	if is_instance_valid(target) and target.has_meta(META_KEY):
 		target.remove_meta(META_KEY)
 		target.notify_property_list_changed()
-
-
-static func adopt_multimesh(target: MultiMeshInstance3D, graph: ScatterGraph) -> void:
-	if target.multimesh == null or graph == null:
-		return
-	for index in target.multimesh.instance_count:
-		graph.manual_instances.transforms.append(target.multimesh.get_instance_transform(index))
-		graph.manual_instances.colors.append(
-			target.multimesh.get_instance_color(index) if target.multimesh.use_colors else Color.WHITE
-		)
-		graph.manual_instances.custom_data.append(
-			target.multimesh.get_instance_custom_data(index)
-			if target.multimesh.use_custom_data
-			else Color(0, 0, 0, 0)
-		)

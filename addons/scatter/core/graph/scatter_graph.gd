@@ -7,7 +7,6 @@ extends Resource
 @export_flags_3d_physics var collision_mask := 1
 @export var nodes: Array[ScatterNode] = []
 @export var connections: Array[ScatterConnection] = []
-@export var manual_instances := ScatterInstanceBuffer.new()
 @export var next_node_id := 1
 
 

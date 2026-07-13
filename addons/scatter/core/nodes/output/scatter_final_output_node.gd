@@ -30,8 +30,6 @@ func get_output_ports() -> Array[ScatterPort]:
 func evaluate(context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterValue:
 	var combined := ScatterInstanceBuffer.new()
 	var sets := inputs.scatter_sets(&"sets")
-	if sets.is_empty():
-		return context.take_manual_instances()
 	for scatter_set in sets:
 		combined.append_buffer(scatter_set.instances, context.maximum_instances)
 		if combined.transforms.size() >= context.maximum_instances:

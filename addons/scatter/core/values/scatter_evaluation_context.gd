@@ -45,11 +45,3 @@ func evaluation_cache_key(node_id: int) -> String:
 	var target_id := target.get_instance_id() if is_instance_valid(target) else 0
 	var region_id := region.get_instance_id() if region != null else 0
 	return "%d:%d:%d:%d:%d" % [graph_id, target_id, node_id, region_id, maximum_instances]
-
-
-func take_manual_instances() -> ScatterInstanceBuffer:
-	var target_id := target.get_instance_id() if is_instance_valid(target) else 0
-	if session.manual_claimed_targets.has(target_id):
-		return ScatterInstanceBuffer.new()
-	session.manual_claimed_targets[target_id] = true
-	return graph.manual_instances.duplicate_buffer() if graph.manual_instances != null else ScatterInstanceBuffer.new()

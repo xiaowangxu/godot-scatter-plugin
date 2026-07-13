@@ -25,7 +25,7 @@ func get_input_ports() -> Array[ScatterPort]:
 func evaluate(context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterValue:
 	var a := inputs.instances(&"a")
 	var b := inputs.instances(&"b")
-	var result := a.duplicate_buffer() if a != null else context.take_manual_instances()
+	var result := a.duplicate_buffer() if a != null else ScatterInstanceBuffer.new()
 	if b != null:
 		result.append_buffer(b, context.maximum_instances)
 	result.limit(context.maximum_instances)
