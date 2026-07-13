@@ -215,8 +215,8 @@ func _test_proxy_cycle() -> void:
 	var b := MultiMeshInstance3D.new()
 	b.name = "B"
 	owner.add_child(b)
-	ScatterGraphAttachment.attach(a, _proxy_graph(NodePath("../B")))
-	ScatterGraphAttachment.attach(b, _proxy_graph(NodePath("../A")))
+	_attach_recipe(a, _proxy_graph(NodePath("../B")), "user://scatter_proxy_cycle_a.tres")
+	_attach_recipe(b, _proxy_graph(NodePath("../A")), "user://scatter_proxy_cycle_b.tres")
 	var result := ScatterBuildService.build_target(a)
 	assert(not result.ok)
 	assert(result.error.contains("cycle"))
@@ -236,3 +236,8 @@ func _proxy_graph(path: NodePath) -> ScatterGraph:
 	graph.connect_nodes(proxy.node_id, &"instances", group.node_id, &"placement")
 	graph.connect_nodes(group.node_id, &"set", output.node_id, &"sets")
 	return graph
+
+
+func _attach_recipe(target: MultiMeshInstance3D, graph: ScatterGraph, path: String) -> void:
+	assert(ScatterRecipeIO.save_graph(graph, path) == OK)
+	assert(ScatterGraphAttachment.attach(target, graph))

@@ -11,7 +11,9 @@ func _init() -> void:
 	ScatterBuiltinRegistry.register_all()
 	var graph := ScatterGraphFactory.create_default()
 	var target := MultiMeshInstance3D.new()
-	ScatterGraphAttachment.attach(target, graph)
+	var recipe_path := "user://scatter_oop_recipe_test.tres"
+	assert(ScatterRecipeIO.save_graph(graph, recipe_path) == OK)
+	assert(ScatterGraphAttachment.attach(target, graph))
 	var panel := ScatterPanel.new()
 	root.add_child(panel)
 	panel.set_target(target)
@@ -64,7 +66,6 @@ func _init() -> void:
 	assert(panel.active_viewport_tool.is_empty())
 	paint.stop()
 	assert(not paint.get_toolbar().visible)
-	var recipe_path := "user://scatter_oop_recipe_test.tres"
 	assert(ScatterRecipeIO.save_graph(graph, recipe_path) == OK)
 	var loaded := ScatterRecipeIO.load_graph(recipe_path)
 	assert(loaded != null)

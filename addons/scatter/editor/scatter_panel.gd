@@ -73,14 +73,19 @@ func _bind_target() -> void:
 		update_status(tr("Select a MultiMeshInstance3D to edit its Scatter graph."))
 		_updating = false
 		return
-	graph = ScatterGraphAttachment.get_or_create(target)
-	_graph_editor.configure(target, graph, _undo_redo)
 	_status.set_title(tr("%s") % target.name)
+	graph = ScatterGraphAttachment.get_graph(target)
+	if graph == null:
+		_graph_editor.clear_target()
+		_toolbar.set_editor_enabled(false)
+		update_status(tr("Configure or load a Scatter recipe from the Inspector."))
+		_updating = false
+		return
+	_graph_editor.configure(target, graph, _undo_redo)
 	_toolbar.set_editor_enabled(true)
 	_sync_toolbar()
 	update_status()
 	_updating = false
-	recipe_changed.emit()
 
 
 func _connect_toolbar() -> void:
@@ -215,7 +220,7 @@ func _paint_data_changed() -> void:
 	if graph != null:
 		graph.emit_changed()
 	_graph_editor.sync_views()
-	recipe_changed.emit()
+	_on_recipe_changed()
 	if graph != null and graph.auto_rebuild:
 		build_requested.emit()
 	if is_instance_valid(target):
@@ -226,7 +231,7 @@ func _path_data_changed() -> void:
 	if graph != null:
 		graph.emit_changed()
 	_graph_editor.sync_views()
-	recipe_changed.emit()
+	_on_recipe_changed()
 	if graph != null and graph.auto_rebuild:
 		build_requested.emit()
 	if is_instance_valid(target):
@@ -245,18 +250,36 @@ func _update_paint_ui() -> void:
 func _save_recipe() -> void:
 	if graph == null:
 		return
+	var error := ScatterRecipeIO.save_graph(graph)
+	update_status(
+		tr("Recipe saved to %s") % graph.resource_path
+		if error == OK
+		else tr("Could not save recipe: %s") % error_string(error)
+	)
+
+
+func _recipe_file_selected(path: String) -> void:
+	var created := ScatterRecipeIO.create_recipe_from_target(target, path)
+	if created == null:
+		update_status(tr("Could not create recipe: %s") % path)
+		return
+	_link_recipe_with_undo(created, tr("Configure Scatter"))
+
+
+func configure_recipe() -> void:
+	if not is_instance_valid(target):
+		return
 	_save_dialog.current_file = "%s_scatter.tres" % target.name.to_snake_case()
 	_save_dialog.popup_centered_ratio(0.65)
 
 
-func _recipe_file_selected(path: String) -> void:
-	var error := ScatterRecipeIO.save_graph(graph, path)
-	update_status(tr("Recipe saved to %s") % path if error == OK else tr("Could not save recipe: %s") % error_string(error))
+func load_recipe() -> void:
+	if is_instance_valid(target):
+		_load_dialog.popup_centered_ratio(0.65)
 
 
 func _load_recipe() -> void:
-	if is_instance_valid(target):
-		_load_dialog.popup_centered_ratio(0.65)
+	load_recipe()
 
 
 func _load_recipe_file(path: String) -> void:
@@ -264,26 +287,39 @@ func _load_recipe_file(path: String) -> void:
 	if loaded == null:
 		update_status(tr("The selected resource is not a ScatterGraph."))
 		return
-	var previous := graph
-	if _undo_redo == null:
-		_set_graph_on_target(target, loaded)
+	_link_recipe_with_undo(loaded, tr("Load Scatter Recipe"))
+
+
+func _link_recipe_with_undo(value: ScatterGraph, caption: String) -> void:
+	if value == null or not is_instance_valid(target):
 		return
-	_undo_redo.create_action(tr("Load Scatter Recipe"), UndoRedo.MERGE_DISABLE, target)
-	_undo_redo.add_do_method(self, "_set_graph_on_target", target, loaded)
+	var previous := ScatterGraphAttachment.get_graph(target)
+	if _undo_redo == null:
+		_set_graph_on_target(target, value)
+		return
+	_undo_redo.create_action(caption, UndoRedo.MERGE_DISABLE, target)
+	_undo_redo.add_do_method(self, "_set_graph_on_target", target, value)
 	_undo_redo.add_undo_method(self, "_set_graph_on_target", target, previous)
 	_undo_redo.commit_action()
 
 
 func _set_graph_on_target(owner: MultiMeshInstance3D, value: ScatterGraph) -> void:
-	if not is_instance_valid(owner) or value == null:
+	if not is_instance_valid(owner):
 		return
-	ScatterGraphAttachment.attach(owner, value)
+	if value == null:
+		ScatterGraphAttachment.detach(owner)
+		if target == owner:
+			_bind_target()
+		return
+	if not ScatterGraphAttachment.attach(owner, value):
+		update_status(tr("Could not link the selected Scatter recipe."))
+		return
 	if target == owner:
 		graph = value
 		_graph_editor.configure(target, graph, _undo_redo)
 		_sync_toolbar()
+		update_status()
 		recipe_changed.emit()
-		build_requested.emit()
 
 
 func _on_recipe_changed() -> void:

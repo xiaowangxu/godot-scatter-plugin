@@ -30,6 +30,8 @@ func _enter_tree() -> void:
 	_inspector.open_requested.connect(_open_target)
 	_inspector.rebuild_requested.connect(_build_target)
 	_inspector.detach_requested.connect(_detach_target)
+	_inspector.configure_requested.connect(_configure_target)
+	_inspector.load_requested.connect(_load_target_recipe)
 	add_inspector_plugin(_inspector)
 	_gizmo = GizmoScript.new()
 	_gizmo.configure(get_undo_redo(), _panel._path_data_changed)
@@ -101,7 +103,16 @@ func _open_target(target: MultiMeshInstance3D) -> void:
 	_paint_tool.set_target(target)
 	make_bottom_panel_item_visible(_panel)
 	get_editor_interface().edit_node(target)
-	_mark_scene_changed()
+
+
+func _configure_target(target: MultiMeshInstance3D) -> void:
+	_open_target(target)
+	_panel.configure_recipe()
+
+
+func _load_target_recipe(target: MultiMeshInstance3D) -> void:
+	_open_target(target)
+	_panel.load_recipe()
 
 
 func _build_current() -> void:
