@@ -19,7 +19,7 @@ The graph editor uses Godot's native `GraphEdit` and `GraphNode` styling. It sup
 - Filter and data: Remove Outside, Remove Random, Proxy Graph, Random Color, and Random Custom Data.
 - Output: Scatter Group and Final Output. Final Output accepts ordered, variadic Scatter Sets.
 
-Paint Region stores typed stroke resources. The 3D viewport tool provides paint/erase, brush preview, persistent region outlines, and UndoRedo. Proxy Graph can consume another native `MultiMeshInstance3D` recipe and detects dependency cycles.
+Selecting a Path node makes it the active 3D viewport editor. Its native viewport toolbar switches between moving handles, adding points, deleting points, and closing the path; selecting another graph node or clearing the selection exits path editing. Paint Region follows the same selection-driven activation model and stores typed stroke resources. Its native viewport toolbar contains Paint/Erase modes, brush radius, layer clearing, and the collision mask; the viewport provides brush preview, persistent region outlines, and UndoRedo. Proxy Graph can consume another native `MultiMeshInstance3D` recipe and detects dependency cycles.
 
 ## Public extension API
 
@@ -33,7 +33,7 @@ func _exit_tree() -> void:
     ScatterNodeRegistry.unregister_node(&"my_scatter_node")
 ```
 
-`ScatterNode` owns typed parameters, stable `StringName` ports, validation, evaluation, disabled behavior, seed policy, and preview geometry. `ScatterNodeView` owns only GraphNode layout and editor interaction. Core code has no Editor API dependency.
+`ScatterNode` owns typed parameters, stable `StringName` ports, validation, evaluation, disabled behavior, seed policy, and preview geometry. `ScatterNodeView` owns only GraphNode layout and editor interaction, including overridable viewport-tool activation hooks. Core code has no Editor API dependency.
 
 Recipes are native `.tres` `ScatterGraph` resources. This architecture intentionally does not import the earlier Dictionary recipe formats.
 

@@ -1,25 +1,23 @@
 @tool
-extends EditorScript
+extends RefCounted
 
 
-func _run() -> void:
-	var manager := get_editor_interface().get_editor_undo_redo()
+static func run(manager: EditorUndoRedoManager) -> void:
 	manager.clear_history(EditorUndoRedoManager.INVALID_HISTORY, false)
-	var target := MultiMeshInstance3D.new()
 	var graph := ScatterGraph.new()
 	var node := ScatterPositionNode.new()
-	var service := ScatterUndoService.new(manager, target, Callable())
+	var service := ScatterUndoService.new(manager, node, Callable())
 	service.commit_property(node, &"position", Vector3(1, 0, 0), "Position", "X", UndoRedo.MERGE_ENDS)
 	service.commit_property(node, &"position", Vector3(2, 0, 0), "Position", "X", UndoRedo.MERGE_ENDS)
 	service.commit_property(node, &"position", Vector3(2, 3, 0), "Position", "Y", UndoRedo.MERGE_ENDS)
-	service.commit_property(node, &"space", 1, "Space")
+	service.commit_property(node, &"space", 2, "Space")
 	assert(node.position == Vector3(2, 3, 0))
-	assert(node.space == 1)
-	var history_id := manager.get_object_history_id(target)
+	assert(node.space == 2)
+	var history_id := manager.get_object_history_id(node)
 	var history := manager.get_history_undo_redo(history_id)
 	assert(history != null)
 	assert(history.undo())
-	assert(node.space == 2)
+	assert(node.space == 1)
 	assert(node.position == Vector3(2, 3, 0))
 	assert(history.undo())
 	assert(node.position == Vector3(2, 0, 0))
@@ -30,10 +28,10 @@ func _run() -> void:
 
 	manager.clear_history(EditorUndoRedoManager.INVALID_HISTORY, false)
 	var controller := ScatterGraphController.new()
-	controller.configure(graph, target, manager, Callable(), Callable(), Callable(), Callable())
+	controller.configure(graph, null, manager, Callable(), Callable(), Callable(), Callable())
 	var created := controller.add_node(&"shape_box", Vector2(10, 20))
 	assert(created != null and graph.nodes.size() == 1)
-	history_id = manager.get_object_history_id(target)
+	history_id = manager.get_object_history_id(graph)
 	history = manager.get_history_undo_redo(history_id)
 	assert(history.undo())
 	assert(graph.nodes.is_empty())
@@ -43,7 +41,4 @@ func _run() -> void:
 	assert(graph.nodes.is_empty())
 	assert(history.undo())
 	assert(graph.nodes.size() == 1 and graph.nodes[0] == created)
-	target.free()
 	manager.clear_history(EditorUndoRedoManager.INVALID_HISTORY, false)
-	print("Scatter UndoRedo editor test passed")
-	get_editor_interface().get_base_control().get_tree().quit()

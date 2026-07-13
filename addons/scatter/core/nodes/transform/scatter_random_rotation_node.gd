@@ -35,5 +35,6 @@ func evaluate(context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> S
 		snap_angle,
 		space,
 		context.random_for(self),
+		context.target,
 	)
 	return buffer

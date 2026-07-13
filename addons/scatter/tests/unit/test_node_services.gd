@@ -5,6 +5,7 @@ func _init() -> void:
 	_test_regions()
 	_test_creation()
 	_test_transforms_filters_and_data()
+	_test_transform_spaces()
 	_test_proxy_cycle()
 	print("Scatter node service test passed")
 	quit()
@@ -63,10 +64,10 @@ func _test_transforms_filters_and_data() -> void:
 	buffer.normalize()
 	var transform_target := Node3D.new()
 	ScatterTransformOps.apply_position(buffer, Vector3(1, 0, 0), 0, 1, transform_target)
-	transform_target.free()
 	assert(buffer.transforms[0].origin == Vector3.ZERO)
-	ScatterTransformOps.apply_scale(buffer, Vector3.ONE * 2.0, 1)
+	ScatterTransformOps.apply_scale(buffer, Vector3.ONE * 2.0, 1, ScatterTransformOps.Space.LOCAL, transform_target)
 	assert(buffer.transforms[0].basis.get_scale().is_equal_approx(Vector3.ONE * 2.0))
+	transform_target.free()
 	ScatterTransformOps.apply_snap(buffer, Vector3.ONE, Vector3(90, 90, 90), Vector3.ONE)
 	var region := ScatterBoxRegion.new(Vector3.ZERO, Vector3(2.1, 2.1, 2.1), Vector3.ZERO)
 	ScatterFilterOps.remove_outside(buffer, region, false)
@@ -83,6 +84,126 @@ func _test_transforms_filters_and_data() -> void:
 	var remove_rng := RandomNumberGenerator.new()
 	ScatterFilterOps.remove_random(buffer, 100.0, remove_rng)
 	assert(buffer.transforms.is_empty())
+
+
+func _test_transform_spaces() -> void:
+	var target := Node3D.new()
+	var target_basis := Basis.from_euler(Vector3(0.0, PI * 0.5, 0.0))
+	var target_transform := Transform3D(target_basis, Vector3(10.0, 3.0, -5.0))
+	target.transform = target_transform
+
+	var global_position := ScatterInstanceBuffer.new()
+	global_position.transforms = [Transform3D.IDENTITY]
+	ScatterTransformOps.apply_position(
+		global_position,
+		Vector3.RIGHT,
+		0,
+		ScatterTransformOps.Space.GLOBAL,
+		target,
+	)
+	assert((target_transform * global_position.transforms[0].origin).is_equal_approx(target_transform.origin + Vector3.RIGHT))
+
+	var local_position := ScatterInstanceBuffer.new()
+	local_position.transforms = [Transform3D.IDENTITY]
+	ScatterTransformOps.apply_position(
+		local_position,
+		Vector3.RIGHT,
+		0,
+		ScatterTransformOps.Space.LOCAL,
+		target,
+	)
+	assert((target_transform * local_position.transforms[0].origin).is_equal_approx(target_transform.origin + target_basis * Vector3.RIGHT))
+
+	var instance_position := ScatterInstanceBuffer.new()
+	instance_position.transforms = [Transform3D(Basis.from_euler(Vector3(0.0, 0.0, PI * 0.5)), Vector3.ZERO)]
+	ScatterTransformOps.apply_position(
+		instance_position,
+		Vector3.RIGHT,
+		0,
+		ScatterTransformOps.Space.INSTANCE,
+		target,
+	)
+	assert((target_transform * instance_position.transforms[0].origin).is_equal_approx(target_transform.origin + target_basis * Vector3.UP))
+	ScatterTransformOps.apply_position(
+		instance_position,
+		Vector3.RIGHT * 3.0,
+		2,
+		ScatterTransformOps.Space.INSTANCE,
+		target,
+	)
+	assert(instance_position.transforms[0].origin.is_equal_approx(Vector3.UP * 3.0))
+
+	var rotation_delta := Basis.from_euler(Vector3(PI * 0.5, 0.0, 0.0))
+	var global_rotation := ScatterInstanceBuffer.new()
+	global_rotation.transforms = [Transform3D.IDENTITY]
+	ScatterTransformOps.apply_rotation(
+		global_rotation,
+		Vector3(90.0, 0.0, 0.0),
+		0,
+		ScatterTransformOps.Space.GLOBAL,
+		target,
+	)
+	assert(_basis_equal(target_basis * global_rotation.transforms[0].basis, rotation_delta * target_basis))
+
+	var instance_rotation := ScatterInstanceBuffer.new()
+	var initial_rotation := Basis.from_euler(Vector3(0.0, PI * 0.5, 0.0))
+	instance_rotation.transforms = [Transform3D(initial_rotation, Vector3.ZERO)]
+	ScatterTransformOps.apply_rotation(
+		instance_rotation,
+		Vector3(90.0, 0.0, 0.0),
+		0,
+		ScatterTransformOps.Space.INSTANCE,
+		target,
+	)
+	assert(_basis_equal(instance_rotation.transforms[0].basis, initial_rotation * rotation_delta))
+
+	var scale_delta := Basis.from_scale(Vector3(2.0, 1.0, 1.0))
+	var initial_scale_rotation := Basis.from_euler(Vector3(0.0, PI * 0.25, 0.0))
+	var instance_scale := ScatterInstanceBuffer.new()
+	instance_scale.transforms = [Transform3D(initial_scale_rotation, Vector3.ZERO)]
+	ScatterTransformOps.apply_scale(
+		instance_scale,
+		Vector3(2.0, 1.0, 1.0),
+		1,
+		ScatterTransformOps.Space.INSTANCE,
+		target,
+	)
+	assert(_basis_equal(instance_scale.transforms[0].basis, initial_scale_rotation * scale_delta))
+
+	var global_scale := ScatterInstanceBuffer.new()
+	global_scale.transforms = [Transform3D(initial_scale_rotation, Vector3.ZERO)]
+	ScatterTransformOps.apply_scale(
+		global_scale,
+		Vector3(2.0, 1.0, 1.0),
+		1,
+		ScatterTransformOps.Space.GLOBAL,
+		target,
+	)
+	assert(_basis_equal(
+		global_scale.transforms[0].basis,
+		target_basis.inverse() * scale_delta * target_basis * initial_scale_rotation,
+	))
+
+	var combined := ScatterInstanceBuffer.new()
+	combined.transforms = [Transform3D(initial_rotation, Vector3(2.0, 0.0, 0.0))]
+	ScatterTransformOps.apply_transform(
+		combined,
+		Vector3.RIGHT,
+		Vector3(90.0, 0.0, 0.0),
+		Vector3(2.0, 1.0, 1.0),
+		ScatterTransformOps.Space.GLOBAL,
+		target,
+	)
+	assert((target_transform * combined.transforms[0].origin).is_equal_approx(target_transform * Vector3(2.0, 0.0, 0.0) + Vector3.RIGHT))
+	assert(_basis_equal(
+		target_basis * combined.transforms[0].basis,
+		scale_delta * rotation_delta * target_basis * initial_rotation,
+	))
+	target.free()
+
+
+func _basis_equal(a: Basis, b: Basis) -> bool:
+	return a.x.is_equal_approx(b.x) and a.y.is_equal_approx(b.y) and a.z.is_equal_approx(b.z)
 
 
 func _test_proxy_cycle() -> void:

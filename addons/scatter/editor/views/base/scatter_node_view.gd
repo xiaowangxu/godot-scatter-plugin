@@ -76,6 +76,18 @@ func update_runtime_stats() -> void:
 	pass
 
 
+func get_viewport_tool_id() -> StringName:
+	return &""
+
+
+func viewport_tool_activated() -> void:
+	pass
+
+
+func viewport_tool_deactivated() -> void:
+	pass
+
+
 func input_port_id(index: int) -> StringName:
 	return input_port_order[index] if index >= 0 and index < input_port_order.size() else &""
 

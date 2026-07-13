@@ -4,7 +4,8 @@ extends VBoxContainer
 
 signal build_requested
 signal recipe_changed
-signal paint_mode_changed(active: bool)
+signal viewport_tool_changed(tool_id: StringName, node_id: int)
+signal paint_settings_changed(collision_mask: int, erase: bool, radius: float, can_clear: bool)
 
 var target: MultiMeshInstance3D
 var graph: ScatterGraph
@@ -12,6 +13,8 @@ var paint_active := false
 var paint_erase := false
 var brush_radius := 2.0
 var active_paint_node_id := 0
+var active_path_node_id := 0
+var active_viewport_tool: StringName = &""
 
 var _undo_redo: EditorUndoRedoManager
 var _graph_editor: ScatterGraphEditor
@@ -33,7 +36,7 @@ func _ready() -> void:
 	add_child(_graph_editor)
 	_graph_editor.recipe_changed.connect(_on_recipe_changed)
 	_graph_editor.build_requested.connect(func(): build_requested.emit())
-	_graph_editor.paint_node_requested.connect(_activate_paint_node)
+	_graph_editor.viewport_tool_changed.connect(_viewport_selection_changed)
 	_graph_editor.status_changed.connect(update_status)
 	_status = ScatterStatusBar.new()
 	add_child(_status)
@@ -51,6 +54,8 @@ func set_target(value: MultiMeshInstance3D) -> void:
 	if target == value and graph != null:
 		return
 	stop_painting()
+	if is_node_ready() and _graph_editor != null:
+		_graph_editor.clear_target()
 	target = value
 	graph = null
 	if not is_node_ready():
@@ -63,14 +68,14 @@ func _bind_target() -> void:
 	if not is_instance_valid(target):
 		graph = null
 		_graph_editor.clear_target()
-		_toolbar.set_title(tr("Scatter"))
+		_status.set_title(tr("Scatter"))
 		_toolbar.set_editor_enabled(false)
 		update_status(tr("Select a MultiMeshInstance3D to edit its Scatter graph."))
 		_updating = false
 		return
 	graph = ScatterGraphAttachment.get_or_create(target)
 	_graph_editor.configure(target, graph, _undo_redo)
-	_toolbar.set_title(tr("Scatter - %s") % target.name)
+	_status.set_title(tr("%s") % target.name)
 	_toolbar.set_editor_enabled(true)
 	_sync_toolbar()
 	update_status()
@@ -88,11 +93,6 @@ func _connect_toolbar() -> void:
 	_toolbar.seed_changed.connect(_seed_changed)
 	_toolbar.reroll_requested.connect(_reroll)
 	_toolbar.auto_build_changed.connect(_auto_rebuild_changed)
-	_toolbar.collision_mask_changed.connect(_collision_mask_changed)
-	_toolbar.paint_changed.connect(_paint_toggled)
-	_toolbar.erase_changed.connect(_erase_toggled)
-	_toolbar.brush_radius_changed.connect(func(value: float): brush_radius = value)
-	_toolbar.clear_paint_requested.connect(_clear_active_paint)
 
 
 func _build_file_dialogs() -> void:
@@ -113,7 +113,7 @@ func _build_file_dialogs() -> void:
 func _sync_toolbar() -> void:
 	if graph == null:
 		return
-	_toolbar.sync_graph(graph.seed, graph.auto_rebuild, graph.collision_mask, brush_radius)
+	_toolbar.sync_graph(graph.seed, graph.auto_rebuild)
 	_update_paint_ui()
 
 
@@ -151,13 +151,13 @@ func _graph_property_changed() -> void:
 		build_requested.emit()
 
 
-func _activate_paint_node(node_id: int) -> void:
-	if graph == null or not (graph.find_node(node_id) is ScatterPaintRegionNode):
-		return
-	active_paint_node_id = node_id
-	paint_active = true
+func _viewport_selection_changed(node_id: int, tool_id: StringName) -> void:
+	active_viewport_tool = tool_id
+	active_paint_node_id = node_id if tool_id == &"paint" else 0
+	active_path_node_id = node_id if tool_id == &"path" else 0
+	paint_active = tool_id == &"paint"
 	_update_paint_ui()
-	paint_mode_changed.emit(true)
+	viewport_tool_changed.emit(tool_id, node_id)
 
 
 func get_active_paint_node() -> ScatterPaintRegionNode:
@@ -166,27 +166,28 @@ func get_active_paint_node() -> ScatterPaintRegionNode:
 	return graph.find_node(active_paint_node_id) as ScatterPaintRegionNode
 
 
-func _paint_toggled(active: bool) -> void:
-	if _updating:
-		return
-	if active and get_active_paint_node() == null:
-		if graph != null:
-			for node in graph.nodes:
-				if node is ScatterPaintRegionNode:
-					active_paint_node_id = node.node_id
-					break
-		if get_active_paint_node() == null:
-			_toolbar.reject_paint_toggle()
-			update_status(tr("Add or select a Paint Region before painting."))
-			return
-	paint_active = active
-	paint_mode_changed.emit(paint_active)
-	_update_paint_ui()
+func get_active_path_node() -> ScatterPathNode:
+	if graph == null:
+		return null
+	return graph.find_node(active_path_node_id) as ScatterPathNode
 
 
-func _erase_toggled(active: bool) -> void:
+func set_paint_erase(active: bool) -> void:
 	paint_erase = active
 	_update_paint_ui()
+
+
+func set_brush_radius(value: float) -> void:
+	brush_radius = clampf(value, 0.05, 1000.0)
+	_update_paint_ui()
+
+
+func set_collision_mask(value: int) -> void:
+	_collision_mask_changed(value)
+
+
+func clear_active_paint() -> void:
+	_clear_active_paint()
 
 
 func stop_painting() -> void:
@@ -194,7 +195,11 @@ func stop_painting() -> void:
 		return
 	paint_active = false
 	_update_paint_ui()
-	paint_mode_changed.emit(false)
+
+
+func stop_viewport_editing() -> void:
+	if _graph_editor != null:
+		_graph_editor.clear_viewport_tool_selection()
 
 
 func _clear_active_paint() -> void:
@@ -217,10 +222,24 @@ func _paint_data_changed() -> void:
 		target.update_gizmos()
 
 
+func _path_data_changed() -> void:
+	if graph != null:
+		graph.emit_changed()
+	_graph_editor.sync_views()
+	recipe_changed.emit()
+	if graph != null and graph.auto_rebuild:
+		build_requested.emit()
+	if is_instance_valid(target):
+		target.update_gizmos()
+
+
 func _update_paint_ui() -> void:
-	if _toolbar == null:
-		return
-	_toolbar.sync_paint(paint_active, paint_erase, get_active_paint_node() != null)
+	paint_settings_changed.emit(
+		graph.collision_mask if graph != null else 1,
+		paint_erase,
+		brush_radius,
+		get_active_paint_node() != null,
+	)
 
 
 func _save_recipe() -> void:

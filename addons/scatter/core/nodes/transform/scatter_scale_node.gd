@@ -25,5 +25,5 @@ func get_color() -> Color:
 
 func evaluate(context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterValue:
 	var buffer := input_instances(context, inputs)
-	ScatterTransformOps.apply_scale(buffer, scale, operation)
+	ScatterTransformOps.apply_scale(buffer, scale, operation, space, context.target)
 	return buffer

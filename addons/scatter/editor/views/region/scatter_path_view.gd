@@ -8,6 +8,9 @@ func _build_ports() -> void:
 
 
 func _build_properties() -> void:
-	add_path_property(&"points", "Points", "Use x,y,z; x,y,z format")
 	add_number_property(&"thickness", "Thickness", 0.0, 1000000.0, 0.1)
 	add_bool_property(&"closed", "Closed")
+
+
+func get_viewport_tool_id() -> StringName:
+	return &"path"

@@ -8,7 +8,18 @@ var undo_redo: EditorUndoRedoManager
 var target: MultiMeshInstance3D
 var build_requested: Callable
 var scene_changed: Callable
+var toolbar: HBoxContainer
 var _last_paint_position := Vector3.INF
+var _paint_button: Button
+var _erase_button: Button
+var _radius: SpinBox
+var _collision_mask: SpinBox
+var _clear_layer: Button
+var _syncing := false
+
+
+func _init() -> void:
+	_build_toolbar()
 
 
 func configure(
@@ -23,6 +34,18 @@ func configure(
 	undo_redo = p_undo_redo
 	build_requested = p_build_requested
 	scene_changed = p_scene_changed
+	panel.paint_settings_changed.connect(_sync_toolbar)
+	_sync_from_panel()
+
+
+func get_toolbar() -> Control:
+	return toolbar
+
+
+func activate() -> void:
+	reset_stroke()
+	_sync_from_panel()
+	toolbar.visible = is_instance_valid(target) and panel != null and panel.get_active_paint_node() != null
 
 
 func set_target(value: MultiMeshInstance3D) -> void:
@@ -38,12 +61,13 @@ func reset_stroke() -> void:
 
 func stop() -> void:
 	reset_stroke()
+	toolbar.visible = false
 	if is_instance_valid(target) and gizmo != null:
 		gizmo.clear_brush_preview(target)
 
 
 func forward_3d_gui_input(camera: Camera3D, event: InputEvent) -> int:
-	if not is_instance_valid(target) or panel == null or not panel.paint_active:
+	if not is_instance_valid(target) or panel == null or not panel.paint_active or not toolbar.visible:
 		return EditorPlugin.AFTER_GUI_INPUT_PASS
 	if event is InputEventMouseMotion:
 		_update_brush_preview(camera, event.position)
@@ -122,3 +146,98 @@ func _paint_data_changed() -> void:
 		panel._paint_data_changed()
 	if scene_changed.is_valid():
 		scene_changed.call(false)
+
+
+func _build_toolbar() -> void:
+	toolbar = HBoxContainer.new()
+	toolbar.name = "ScatterPaintToolbar"
+	toolbar.visible = false
+	var label := Label.new()
+	label.text = tr("Scatter Paint")
+	toolbar.add_child(label)
+	var mode_group := ButtonGroup.new()
+	_paint_button = _mode_button("Paint", mode_group, false)
+	_erase_button = _mode_button("Erase", mode_group, true)
+	toolbar.add_child(_paint_button)
+	toolbar.add_child(_erase_button)
+	toolbar.add_child(_label("Radius"))
+	_radius = _spin(0.05, 1000.0, 0.05)
+	_radius.custom_minimum_size.x = 90.0
+	_radius.value_changed.connect(_radius_changed)
+	toolbar.add_child(_radius)
+	_clear_layer = Button.new()
+	_clear_layer.text = tr("Clear Layer")
+	_clear_layer.pressed.connect(_clear_pressed)
+	toolbar.add_child(_clear_layer)
+	toolbar.add_child(VSeparator.new())
+	toolbar.add_child(_label("Collision Mask"))
+	_collision_mask = _spin(1.0, 4294967295.0, 1.0)
+	_collision_mask.custom_minimum_size.x = 90.0
+	_collision_mask.value_changed.connect(_collision_mask_changed)
+	toolbar.add_child(_collision_mask)
+
+
+func _mode_button(caption: String, group: ButtonGroup, erase: bool) -> Button:
+	var button := Button.new()
+	button.text = tr(caption)
+	button.toggle_mode = true
+	button.button_group = group
+	button.pressed.connect(_paint_mode_pressed.bind(erase))
+	return button
+
+
+func _label(caption: String) -> Label:
+	var label := Label.new()
+	label.text = tr(caption)
+	return label
+
+
+func _spin(minimum: float, maximum: float, step: float) -> SpinBox:
+	var spin := SpinBox.new()
+	spin.min_value = minimum
+	spin.max_value = maximum
+	spin.step = step
+	spin.allow_greater = false
+	spin.allow_lesser = false
+	return spin
+
+
+func _paint_mode_pressed(erase: bool) -> void:
+	if not _syncing and panel != null:
+		panel.set_paint_erase(erase)
+
+
+func _radius_changed(value: float) -> void:
+	if not _syncing and panel != null:
+		panel.set_brush_radius(value)
+
+
+func _collision_mask_changed(value: float) -> void:
+	if not _syncing and panel != null:
+		panel.set_collision_mask(int(value))
+
+
+func _clear_pressed() -> void:
+	if panel != null:
+		panel.clear_active_paint()
+
+
+func _sync_from_panel() -> void:
+	if panel == null:
+		return
+	_sync_toolbar(
+		panel.graph.collision_mask if panel.graph != null else 1,
+		panel.paint_erase,
+		panel.brush_radius,
+		panel.get_active_paint_node() != null,
+	)
+
+
+func _sync_toolbar(collision_mask: int, erase: bool, radius: float, can_clear: bool) -> void:
+	_syncing = true
+	_paint_button.button_pressed = not erase
+	_erase_button.button_pressed = erase
+	_radius.value = radius
+	_collision_mask.value = collision_mask
+	_clear_layer.disabled = not can_clear
+	_syncing = false

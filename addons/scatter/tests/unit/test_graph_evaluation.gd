@@ -12,13 +12,24 @@ func _init() -> void:
 
 
 func _test_demo_build_and_determinism() -> void:
-	var scene := load("res://addons/scatter/demo/scatter_demo.tscn") as PackedScene
-	assert(scene != null)
-	var root_node := scene.instantiate()
-	root.add_child(root_node)
-	var target := root_node.get_node("ScatteredCubes") as MultiMeshInstance3D
-	var graph := ScatterGraphAttachment.get_graph(target)
-	assert(graph != null)
+	# The demo is user-editable and must not be a fixed test fixture. Build a
+	# minimal typed graph here so determinism has a stable, isolated contract.
+	var graph := ScatterGraph.new()
+	graph.seed = 1234
+	var box := ScatterBoxNode.new()
+	box.size = Vector3(10.0, 0.0, 10.0)
+	var random := ScatterRandomNode.new()
+	random.amount = 4
+	var group := ScatterGroupNode.new()
+	var output := ScatterFinalOutputNode.new()
+	for node in [box, random, group, output]:
+		graph.add_node(node)
+	graph.connect_nodes(box.node_id, &"region", group.node_id, &"region")
+	graph.connect_nodes(random.node_id, &"instances", group.node_id, &"placement")
+	graph.connect_nodes(group.node_id, &"set", output.node_id, &"sets")
+	var target := MultiMeshInstance3D.new()
+	root.add_child(target)
+	ScatterGraphAttachment.attach(target, graph)
 	var first := ScatterBuildService.build_target(target, graph)
 	var second := ScatterBuildService.build_target(target, graph)
 	assert(first.ok and second.ok)
@@ -26,7 +37,7 @@ func _test_demo_build_and_determinism() -> void:
 	assert(first.instances.transforms == second.instances.transforms)
 	ScatterMultiMeshWriter.apply(target, first)
 	assert(target.multimesh.instance_count == 4)
-	root_node.free()
+	target.free()
 
 
 func _test_type_and_cycle_rejection() -> void:

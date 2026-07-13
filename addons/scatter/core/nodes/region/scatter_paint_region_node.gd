@@ -16,7 +16,7 @@ func get_caption() -> String:
 
 
 func get_color() -> Color:
-	return Color("3fae9a")
+	return Color("5d83b3")
 
 
 func evaluate(_context: ScatterEvaluationContext, _inputs: ScatterNodeInputs) -> ScatterValue:

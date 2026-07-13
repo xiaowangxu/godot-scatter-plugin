@@ -4,7 +4,7 @@ extends GraphEdit
 
 signal recipe_changed
 signal build_requested
-signal paint_node_requested(node_id: int)
+signal viewport_tool_changed(node_id: int, tool_id: StringName)
 signal status_changed(message: String)
 
 enum NodeMenuAction {
@@ -39,6 +39,8 @@ var _menu_screen_position := Vector2.ZERO
 var _pending_add_position := Vector2.INF
 var _pending_moves: Dictionary = {}
 var _move_commit_pending := false
+var _active_viewport_node_id := 0
+var _rebuilding_graph := false
 
 
 func _ready() -> void:
@@ -60,6 +62,8 @@ func _ready() -> void:
 	paste_nodes_request.connect(_paste_nodes_requested)
 	duplicate_nodes_request.connect(_duplicate_selected_nodes)
 	popup_request.connect(_show_context_menu)
+	node_selected.connect(_node_selected)
+	node_deselected.connect(_node_deselected)
 	_build_context_menus()
 	_build_add_popup()
 
@@ -78,7 +82,6 @@ func configure(
 	editor_context.sync_views = sync_views
 	editor_context.graph_changed = _emit_recipe_changed
 	editor_context.build_requested = _emit_build_requested
-	editor_context.paint_requested = _emit_paint_requested
 	editor_context.undo = ScatterUndoService.new(
 		_undo_redo,
 		target if is_instance_valid(target) else graph,
@@ -97,6 +100,7 @@ func configure(
 
 
 func clear_target() -> void:
+	_set_active_viewport_view(null)
 	target = null
 	graph = null
 	editor_context = null
@@ -111,6 +115,14 @@ func rebuild_graph(focus_view := false) -> void:
 	var previous_scroll := scroll_offset
 	var previous_zoom := zoom
 	var selection := selected_node_ids(false)
+	# Tool scripts may be hot-reloaded on an existing GraphEdit instance; cast
+	# the newly-added field because Godot initializes it as Nil in that case.
+	var previous_active := int(_active_viewport_node_id)
+	var previous_active_view := get_view(previous_active)
+	if previous_active_view != null:
+		previous_active_view.viewport_tool_deactivated()
+	_active_viewport_node_id = 0
+	_rebuilding_graph = true
 	clear_connections()
 	_clear_node_views()
 	for node in graph.nodes:
@@ -138,6 +150,12 @@ func rebuild_graph(focus_view := false) -> void:
 		var view := get_view(node_id)
 		if view != null:
 			view.selected = true
+	_rebuilding_graph = false
+	var restored_active := get_view(previous_active)
+	if restored_active != null and restored_active.selected:
+		_set_active_viewport_view(restored_active)
+	elif previous_active != 0:
+		viewport_tool_changed.emit(0, &"")
 	if focus_view:
 		focus_recipe()
 
@@ -190,6 +208,13 @@ func focus_output() -> void:
 		return
 	zoom = 0.9
 	scroll_offset = output.graph_position - size * 0.55
+
+
+func clear_viewport_tool_selection() -> void:
+	var active := get_view(int(_active_viewport_node_id))
+	if active != null:
+		active.selected = false
+	_set_active_viewport_view(null)
 
 
 func popup_add_menu(screen_position := Vector2i.ZERO) -> void:
@@ -482,5 +507,27 @@ func _emit_build_requested() -> void:
 	build_requested.emit()
 
 
-func _emit_paint_requested(node_id: int) -> void:
-	paint_node_requested.emit(node_id)
+func _node_selected(node: Node) -> void:
+	if not _rebuilding_graph and node is ScatterNodeView:
+		_set_active_viewport_view(node)
+
+
+func _node_deselected(node: Node) -> void:
+	if not _rebuilding_graph and node is ScatterNodeView and node.model.node_id == int(_active_viewport_node_id):
+		_set_active_viewport_view(null)
+
+
+func _set_active_viewport_view(view: ScatterNodeView) -> void:
+	var next_id := view.model.node_id if view != null and not view.get_viewport_tool_id().is_empty() else 0
+	var current_id := int(_active_viewport_node_id)
+	if next_id == current_id:
+		return
+	var previous := get_view(current_id)
+	if previous != null:
+		previous.viewport_tool_deactivated()
+	_active_viewport_node_id = next_id
+	if view != null and next_id != 0:
+		view.viewport_tool_activated()
+		viewport_tool_changed.emit(next_id, view.get_viewport_tool_id())
+	else:
+		viewport_tool_changed.emit(0, &"")
