@@ -16,6 +16,7 @@ var _last_paint_position := Vector3.INF
 func _enter_tree() -> void:
 	_panel = PanelScript.new()
 	_panel.name = "ScatterEditor"
+	_panel.set_undo_redo(get_undo_redo())
 	_bottom_button = add_control_to_bottom_panel(_panel, "Scatter")
 	_panel.build_requested.connect(_build_current)
 	_panel.recipe_changed.connect(_mark_scene_changed)
@@ -80,19 +81,19 @@ func _build_current() -> void:
 		_build_target(_target)
 
 
-func _build_target(target: MultiMeshInstance3D) -> void:
+func _build_target(target: MultiMeshInstance3D, mark_unsaved := true) -> void:
 	var queue: Array[MultiMeshInstance3D] = [target]
 	var visited := {}
 	while not queue.is_empty():
 		var current := queue.pop_front()
 		if not is_instance_valid(current) or visited.has(current.get_instance_id()): continue
 		visited[current.get_instance_id()] = true
-		_build_one(current)
+		_build_one(current, mark_unsaved)
 		for dependent in _find_dependents(current):
 			if not visited.has(dependent.get_instance_id()): queue.append(dependent)
 
 
-func _build_one(target: MultiMeshInstance3D) -> void:
+func _build_one(target: MultiMeshInstance3D, mark_unsaved := true) -> void:
 	var config := ScatterGenerator.ensure_config(target)
 	var result := ScatterGenerator.build(target, config)
 	if not result.get("ok", false):
@@ -101,7 +102,7 @@ func _build_one(target: MultiMeshInstance3D) -> void:
 		return
 	ScatterGenerator.apply_to_multimesh(target, result)
 	if _panel.target == target: _panel.update_group_counts(result)
-	_mark_scene_changed()
+	_mark_scene_changed(mark_unsaved)
 
 
 func _find_dependents(source: MultiMeshInstance3D) -> Array[MultiMeshInstance3D]:
@@ -139,7 +140,7 @@ func _refresh_after_metadata_change(target: MultiMeshInstance3D) -> void:
 	if _panel.target == target:
 		_panel.set_target(target)
 	target.notify_property_list_changed()
-	_mark_scene_changed()
+	_mark_scene_changed(false)
 
 
 func _on_paint_mode_changed(active: bool) -> void:
@@ -223,11 +224,12 @@ func _set_paint_strokes(target: MultiMeshInstance3D, node_id: int, strokes: Arra
 	entry.params.strokes = strokes.duplicate(true)
 	config.emit_changed()
 	if _panel.target == target: _panel.refresh_paint_count(node_id)
-	_build_target(target)
+	_build_target(target, false)
 
 
-func _mark_scene_changed() -> void:
-	if get_editor_interface().has_method("mark_scene_as_unsaved"):
+func _mark_scene_changed(mark_unsaved := true) -> void:
+	var replaying_history := _panel != null and _panel.history_action_active
+	if mark_unsaved and not replaying_history and get_editor_interface().has_method("mark_scene_as_unsaved"):
 		get_editor_interface().mark_scene_as_unsaved()
 	if is_instance_valid(_target):
 		_target.notify_property_list_changed()

@@ -6,19 +6,45 @@ signal build_requested
 signal recipe_changed
 signal paint_mode_changed(active: bool)
 
+enum NodeMenuAction {
+	ADD,
+	CUT,
+	COPY,
+	PASTE,
+	DELETE,
+	DUPLICATE,
+	CLEAR_COPY_BUFFER,
+	TOGGLE_ENABLED,
+}
+
+enum ConnectionMenuAction {
+	DISCONNECT,
+}
+
 var target: MultiMeshInstance3D
 var config: ScatterConfig
 var paint_active := false
 var paint_erase := false
 var brush_radius := 2.0
 var active_paint_node_id := 0
+var history_action_active := false
 
 var _title_label: Label
 var _status_label: Label
 var _paint_layer_label: Label
 var _graph: GraphEdit
 var _add_popup: PopupMenu
+var _node_popup: PopupMenu
+var _connection_popup: PopupMenu
 var _popup_types: Dictionary = {}
+var _undo_redo: EditorUndoRedoManager
+var _copy_buffer: Dictionary = {}
+var _clicked_connection: Dictionary = {}
+var _menu_graph_position := Vector2.ZERO
+var _menu_screen_position := Vector2.ZERO
+var _pending_add_position := Vector2.INF
+var _pending_node_moves: Dictionary = {}
+var _node_move_commit_pending := false
 var _seed: SpinBox
 var _auto_rebuild: CheckBox
 var _paint_button: Button
@@ -51,12 +77,53 @@ func _ready() -> void:
 	_graph.connection_request.connect(_connection_requested)
 	_graph.disconnection_request.connect(_disconnection_requested)
 	_graph.node_selected.connect(_graph_node_selected)
+	_graph.delete_nodes_request.connect(_delete_nodes_requested)
+	_graph.copy_nodes_request.connect(_copy_selected_nodes.bind(false))
+	_graph.cut_nodes_request.connect(_copy_selected_nodes.bind(true))
+	_graph.paste_nodes_request.connect(_paste_nodes_requested)
+	_graph.duplicate_nodes_request.connect(_duplicate_selected_nodes)
+	_graph.popup_request.connect(_show_graph_context_menu)
 	add_child(_graph)
+	_build_graph_context_menus()
 
 	_status_label = Label.new()
 	_status_label.text = "请选择一个 MultiMeshInstance3D 开始编辑。"
 	_status_label.tooltip_text = "配方保存在原生 MultiMeshInstance3D 的元数据中，不会创建额外场景节点。"
 	add_child(_status_label)
+
+
+func set_undo_redo(value: EditorUndoRedoManager) -> void:
+	_undo_redo = value
+
+
+func _build_graph_context_menus() -> void:
+	_node_popup = PopupMenu.new()
+	_node_popup.name = "NodeOperationsMenu"
+	_node_popup.add_item("添加节点", NodeMenuAction.ADD)
+	_node_popup.add_separator()
+	_add_graph_shortcut_item("剪切", NodeMenuAction.CUT, &"ui_cut")
+	_add_graph_shortcut_item("复制", NodeMenuAction.COPY, &"ui_copy")
+	_add_graph_shortcut_item("粘贴", NodeMenuAction.PASTE, &"ui_paste")
+	_add_graph_shortcut_item("删除", NodeMenuAction.DELETE, &"ui_graph_delete")
+	_add_graph_shortcut_item("创建副本", NodeMenuAction.DUPLICATE, &"ui_graph_duplicate")
+	_node_popup.add_item("清空复制缓冲区", NodeMenuAction.CLEAR_COPY_BUFFER)
+	_node_popup.add_separator()
+	_node_popup.add_item("停用节点", NodeMenuAction.TOGGLE_ENABLED)
+	_node_popup.id_pressed.connect(_node_menu_id_pressed)
+	add_child(_node_popup)
+
+	_connection_popup = PopupMenu.new()
+	_connection_popup.name = "ConnectionOperationsMenu"
+	_connection_popup.add_item("断开连接", ConnectionMenuAction.DISCONNECT)
+	_connection_popup.id_pressed.connect(_connection_menu_id_pressed)
+	add_child(_connection_popup)
+
+
+func _add_graph_shortcut_item(label: String, id: int, action: StringName) -> void:
+	var shortcut := Shortcut.new()
+	shortcut.resource_name = label
+	shortcut.events = InputMap.action_get_events(action)
+	_node_popup.add_shortcut(shortcut, id)
 
 
 func _build_toolbar() -> void:
@@ -248,7 +315,7 @@ func _create_starter_recipe() -> void:
 	config.emit_changed()
 
 
-func rebuild_graph() -> void:
+func rebuild_graph(focus_view := true) -> void:
 	if not is_node_ready(): return
 	_updating = true
 	_clear_graph()
@@ -271,7 +338,8 @@ func rebuild_graph() -> void:
 	_updating = false
 	_update_active_paint_ui()
 	update_status()
-	focus_recipe.call_deferred()
+	if focus_view:
+		focus_recipe.call_deferred()
 
 
 func focus_recipe() -> void:
@@ -319,7 +387,7 @@ func _make_graph_node(entry: Dictionary) -> GraphNode:
 		node.custom_minimum_size.x = 225
 	else:
 		node.custom_minimum_size.x = 270
-	node.position_offset_changed.connect(_node_moved.bind(id, node))
+	node.dragged.connect(_node_dragged.bind(id))
 	node.delete_request.connect(_delete_node.bind(id))
 
 	if ScatterSchema.is_final_output(type):
@@ -607,22 +675,34 @@ func _connection_requested(from_node: StringName, from_port: int, to_node: Strin
 	if config.would_create_cycle(from_id, to_id):
 		update_status("连接失败：该连线会产生循环依赖。")
 		return
-	var old := config.incoming_connection(to_id, to_port)
-	if not old.is_empty():
-		_graph.disconnect_node(StringName(str(old.from_id)), int(old.from_port), to_node, to_port)
-	config.connect_nodes(from_id, from_port, to_id, to_port)
-	var rebuild := ScatterSchema.is_final_output(to_entry.get("type", ""))
-	if not rebuild: _graph.connect_node(from_node, from_port, to_node, to_port)
-	_recipe_modified(rebuild)
+	var selected := _selected_node_ids(false)
+	var before := _make_graph_state(config, selected, active_paint_node_id)
+	var working := config.duplicate_recipe()
+	working.connect_nodes(from_id, from_port, to_id, to_port)
+	var after := _make_graph_state(working, selected, active_paint_node_id)
+	_commit_graph_action("连接 Scatter 节点", before, after)
 
 
 func _disconnection_requested(from_node: StringName, from_port: int, to_node: StringName, to_port: int) -> void:
 	if config == null: return
-	var to_entry := _find_entry(String(to_node).to_int())
-	config.disconnect_nodes(String(from_node).to_int(), from_port, String(to_node).to_int(), to_port)
-	var rebuild := ScatterSchema.is_final_output(to_entry.get("type", ""))
-	if not rebuild: _graph.disconnect_node(from_node, from_port, to_node, to_port)
-	_recipe_modified(rebuild)
+	var from_id := String(from_node).to_int()
+	var to_id := String(to_node).to_int()
+	var exists := false
+	for connection in config.connections:
+		if (int(connection.get("from_id", 0)) == from_id
+				and int(connection.get("from_port", 0)) == from_port
+				and int(connection.get("to_id", 0)) == to_id
+				and int(connection.get("to_port", 0)) == to_port):
+			exists = true
+			break
+	if not exists: return
+	var selected := _selected_node_ids(false)
+	var before := _make_graph_state(config, selected, active_paint_node_id)
+	var working := config.duplicate_recipe()
+	working.disconnect_nodes(from_id, from_port, to_id, to_port)
+	working.ensure_graph()
+	var after := _make_graph_state(working, selected, active_paint_node_id)
+	_commit_graph_action("断开 Scatter 节点", before, after)
 
 
 func _graph_node_selected(node: Node) -> void:
@@ -633,14 +713,12 @@ func _graph_node_selected(node: Node) -> void:
 
 
 func _parameter_changed(value: Variant, id: int, key: String) -> void:
-	var entry := _find_entry(id)
-	if entry.is_empty(): return
-	entry.params[key] = value
-	_recipe_modified(false)
+	var merge_mode := UndoRedo.MERGE_ENDS if value is Color else UndoRedo.MERGE_DISABLE
+	_commit_node_parameter(id, key, value, "", merge_mode)
 
 
 func _numeric_changed(value: float, id: int, key: String, as_int: bool) -> void:
-	_parameter_changed(int(value) if as_int else value, id, key)
+	_commit_node_parameter(id, key, int(value) if as_int else value, "", UndoRedo.MERGE_ENDS)
 
 
 func _vector_changed(value: float, id: int, key: String, axis: int, count: int) -> void:
@@ -648,15 +726,14 @@ func _vector_changed(value: float, id: int, key: String, axis: int, count: int) 
 	if entry.is_empty(): return
 	var vector = entry.params.get(key, Vector2.ZERO if count == 2 else Vector3.ZERO)
 	vector[axis] = value
-	entry.params[key] = vector
-	_recipe_modified(false)
+	_commit_node_parameter(id, key, vector, ["X", "Y", "Z"][axis], UndoRedo.MERGE_ENDS)
 
 
 func _text_changed(value: String, id: int, key: String, type: String) -> void:
 	var converted: Variant = value
 	if type == "node_path": converted = NodePath(value)
 	elif type == "path": converted = _text_to_path(value)
-	_parameter_changed(converted, id, key)
+	_commit_node_parameter(id, key, converted, "", UndoRedo.MERGE_DISABLE)
 
 
 func _line_focus_exited(control: LineEdit, id: int, key: String, type: String) -> void:
@@ -664,50 +741,92 @@ func _line_focus_exited(control: LineEdit, id: int, key: String, type: String) -
 
 
 func _enabled_changed(value: bool, id: int) -> void:
+	if _updating or config == null: return
 	var entry := _find_entry(id)
-	if entry.is_empty(): return
-	entry.enabled = value
-	_recipe_modified(false)
+	if entry.is_empty() or bool(entry.get("enabled", true)) == value: return
+	var selected := _selected_node_ids(false)
+	var before := _make_graph_state(config, selected, active_paint_node_id)
+	var working := config.duplicate_recipe()
+	working.find_node(id).enabled = value
+	var after := _make_graph_state(working, selected, active_paint_node_id)
+	_commit_graph_action("启用 Scatter 节点" if value else "停用 Scatter 节点", before, after)
 
 
 func _override_seed_changed(value: bool, id: int, control: SpinBox) -> void:
-	var entry := _find_entry(id)
-	if entry.is_empty(): return
-	entry.override_seed = value
 	control.visible = value
-	_recipe_modified(false)
+	_commit_node_entry_value(id, "override_seed", value, "使用独立种子", "", UndoRedo.MERGE_DISABLE)
 
 
 func _custom_seed_changed(value: float, id: int) -> void:
+	_commit_node_entry_value(id, "custom_seed", int(value), "独立种子", "", UndoRedo.MERGE_ENDS)
+
+
+func _commit_node_parameter(id: int, key: String, value: Variant, component: String, merge_mode: int) -> void:
 	var entry := _find_entry(id)
-	if entry.is_empty(): return
-	entry.custom_seed = int(value)
+	if _updating or entry.is_empty(): return
+	var old_value: Variant = entry.get("params", {}).get(key)
+	if old_value == value: return
+	var before := _make_graph_state(config, _selected_node_ids(false), active_paint_node_id)
+	entry.params[key] = value
+	_notify_managed_recipe_change()
+	var after := _make_graph_state(config, _selected_node_ids(false), active_paint_node_id)
+	var label := ScatterSchema.parameter_label(key)
+	_commit_graph_action(_node_value_action_name(entry, id, label, component), before, after, merge_mode, false)
+
+
+func _commit_node_entry_value(id: int, field: String, value: Variant, label: String, component: String, merge_mode: int) -> void:
+	var entry := _find_entry(id)
+	if _updating or entry.is_empty(): return
+	if entry.get(field) == value: return
+	var before := _make_graph_state(config, _selected_node_ids(false), active_paint_node_id)
+	entry[field] = value
+	_notify_managed_recipe_change()
+	var after := _make_graph_state(config, _selected_node_ids(false), active_paint_node_id)
+	_commit_graph_action(_node_value_action_name(entry, id, label, component), before, after, merge_mode, false)
+
+
+func _node_value_action_name(entry: Dictionary, id: int, label: String, component: String) -> String:
+	var node_title := ScatterSchema.display_title(entry.get("type", ""))
+	var field_name := "%s %s" % [label, component] if not component.is_empty() else label
+	# Node id and field/axis make MERGE_ENDS local to exactly one editor control.
+	return "修改 %s #%d · %s" % [node_title, id, field_name]
+
+
+func _notify_managed_recipe_change() -> void:
+	history_action_active = true
 	_recipe_modified(false)
+	history_action_active = false
 
 
-func _node_moved(id: int, graph_node: GraphNode) -> void:
-	if _updating: return
-	var entry := _find_entry(id)
-	if entry.is_empty(): return
-	entry.position = graph_node.position_offset
-	config.emit_changed()
-	recipe_changed.emit()
+func _node_dragged(from: Vector2, to: Vector2, id: int) -> void:
+	if _updating or from.is_equal_approx(to): return
+	_pending_node_moves[id] = {"from": from, "to": to}
+	if not _node_move_commit_pending:
+		_node_move_commit_pending = true
+		_commit_node_moves.call_deferred()
+
+
+func _commit_node_moves() -> void:
+	_node_move_commit_pending = false
+	if config == null or _pending_node_moves.is_empty(): return
+	var moves := _pending_node_moves.duplicate(true)
+	_pending_node_moves.clear()
+	var selected := _selected_node_ids(false)
+	var before := _make_graph_state(config, selected, active_paint_node_id)
+	var working := config.duplicate_recipe()
+	for id in moves:
+		var entry := working.find_node(int(id))
+		if not entry.is_empty(): entry.position = moves[id].to
+	var after := _make_graph_state(working, selected, active_paint_node_id)
+	_commit_graph_action("移动 Scatter 节点", before, after)
 
 
 func _delete_node(id: int) -> void:
-	if config == null: return
-	var entry := _find_entry(id)
-	if ScatterSchema.is_final_output(entry.get("type", "")):
-		update_status("最终输出是配方的唯一出口，不能删除。")
-		return
-	if active_paint_node_id == id:
-		_stop_painting()
-		active_paint_node_id = 0
-	config.remove_node(id)
-	_recipe_modified(true)
+	_delete_node_ids([id], "删除 Scatter 节点")
 
 
 func _show_add_popup(button: Button) -> void:
+	_pending_add_position = Vector2.INF
 	var position := button.get_screen_position() + Vector2(0, button.size.y)
 	_add_popup.position = Vector2i(position)
 	_add_popup.popup()
@@ -715,16 +834,330 @@ func _show_add_popup(button: Button) -> void:
 
 func _on_add_type(id: int) -> void:
 	if config == null: return
-	var position := _graph.scroll_offset + _graph.size * 0.35
-	var entry := config.add_node(_popup_types[id], position)
-	if entry.get("type", "") == "paint_region": active_paint_node_id = int(entry.id)
+	var position := _pending_add_position
+	if position == Vector2.INF:
+		position = _graph_position_from_local(_graph.size * 0.5)
+	_pending_add_position = Vector2.INF
+	var before := _make_graph_state(config, _selected_node_ids(false), active_paint_node_id)
+	var working := config.duplicate_recipe()
+	var entry := working.add_node(_popup_types[id], position)
+	var next_active := active_paint_node_id
+	if entry.get("type", "") == "paint_region": next_active = int(entry.id)
 	if ScatterSchema.is_group(entry.get("type", "")):
-		var final_output := config.final_output_node()
+		var final_output := working.final_output_node()
 		if not final_output.is_empty():
 			var port := 0
-			while not config.incoming_connection(int(final_output.id), port).is_empty(): port += 1
-			config.connect_nodes(int(entry.id), 0, int(final_output.id), port)
-	_recipe_modified(true)
+			while not working.incoming_connection(int(final_output.id), port).is_empty(): port += 1
+			working.connect_nodes(int(entry.id), 0, int(final_output.id), port)
+	working.ensure_graph()
+	var selected: Array[int] = [int(entry.id)]
+	var after := _make_graph_state(working, selected, next_active)
+	_commit_graph_action("添加 Scatter 节点", before, after)
+
+
+func _show_graph_context_menu(at_position: Vector2) -> void:
+	if config == null: return
+	_menu_graph_position = _graph_position_from_local(at_position)
+	_menu_screen_position = _graph.get_screen_position() + at_position
+	_clicked_connection = _graph.get_closest_connection_at_point(at_position, 8.0)
+	if not _clicked_connection.is_empty():
+		_connection_popup.position = Vector2i(_menu_screen_position)
+		_connection_popup.reset_size()
+		_connection_popup.popup()
+		return
+
+	var clicked_node := _graph_node_at(at_position)
+	if clicked_node != null and not clicked_node.selected:
+		for child in _graph.get_children():
+			if child is GraphNode: child.selected = false
+		clicked_node.selected = true
+	_configure_node_context_menu()
+	_node_popup.position = Vector2i(_menu_screen_position)
+	_node_popup.reset_size()
+	_node_popup.popup()
+
+
+func _graph_node_at(local_position: Vector2) -> GraphNode:
+	for index in range(_graph.get_child_count() - 1, -1, -1):
+		var child := _graph.get_child(index)
+		if child is GraphNode and child.visible and child.get_rect().has_point(local_position):
+			return child
+	return null
+
+
+func _configure_node_context_menu() -> void:
+	var selected := _selected_node_ids(true)
+	var has_selection := not selected.is_empty()
+	var has_copy := not Array(_copy_buffer.get("nodes", [])).is_empty()
+	_set_node_menu_disabled(NodeMenuAction.CUT, not has_selection)
+	_set_node_menu_disabled(NodeMenuAction.COPY, not has_selection)
+	_set_node_menu_disabled(NodeMenuAction.PASTE, not has_copy)
+	_set_node_menu_disabled(NodeMenuAction.DELETE, not has_selection)
+	_set_node_menu_disabled(NodeMenuAction.DUPLICATE, not has_selection)
+	_set_node_menu_disabled(NodeMenuAction.CLEAR_COPY_BUFFER, not has_copy)
+	_set_node_menu_disabled(NodeMenuAction.TOGGLE_ENABLED, not has_selection)
+	var all_enabled := true
+	for id in selected:
+		if not bool(_find_entry(id).get("enabled", true)):
+			all_enabled = false
+			break
+	var toggle_index := _node_popup.get_item_index(NodeMenuAction.TOGGLE_ENABLED)
+	_node_popup.set_item_text(toggle_index, "停用节点" if all_enabled else "启用节点")
+
+
+func _set_node_menu_disabled(id: int, disabled: bool) -> void:
+	var index := _node_popup.get_item_index(id)
+	if index >= 0: _node_popup.set_item_disabled(index, disabled)
+
+
+func _node_menu_id_pressed(id: int) -> void:
+	match id:
+		NodeMenuAction.ADD:
+			_pending_add_position = _menu_graph_position
+			_add_popup.position = Vector2i(_menu_screen_position)
+			_add_popup.popup()
+		NodeMenuAction.CUT:
+			_copy_selected_nodes(true)
+		NodeMenuAction.COPY:
+			_copy_selected_nodes(false)
+		NodeMenuAction.PASTE:
+			_paste_snapshot(_copy_buffer, _menu_graph_position, "粘贴 Scatter 节点")
+		NodeMenuAction.DELETE:
+			_delete_node_ids(_selected_node_ids(true), "删除 Scatter 节点")
+		NodeMenuAction.DUPLICATE:
+			_duplicate_selected_nodes()
+		NodeMenuAction.CLEAR_COPY_BUFFER:
+			_copy_buffer.clear()
+		NodeMenuAction.TOGGLE_ENABLED:
+			_toggle_selected_nodes()
+
+
+func _connection_menu_id_pressed(id: int) -> void:
+	if id != ConnectionMenuAction.DISCONNECT or _clicked_connection.is_empty(): return
+	_disconnection_requested(
+		_clicked_connection.get("from_node", StringName()),
+		int(_clicked_connection.get("from_port", 0)),
+		_clicked_connection.get("to_node", StringName()),
+		int(_clicked_connection.get("to_port", 0)),
+	)
+	_clicked_connection.clear()
+
+
+func _selected_node_ids(deletable_only := true) -> Array[int]:
+	var result: Array[int] = []
+	if _graph == null: return result
+	for child in _graph.get_children():
+		if not child is GraphNode or not child.selected: continue
+		var id := String(child.name).to_int()
+		var entry := _find_entry(id)
+		if entry.is_empty(): continue
+		if deletable_only and ScatterSchema.is_final_output(entry.get("type", "")): continue
+		result.append(id)
+	return result
+
+
+func _delete_nodes_requested(nodes: Array) -> void:
+	var ids: Array[int] = []
+	for node_name in nodes:
+		ids.append(String(node_name).to_int())
+	if ids.is_empty(): ids = _selected_node_ids(true)
+	_delete_node_ids(ids, "删除 Scatter 节点")
+
+
+func _delete_node_ids(ids: Array, action_name: String) -> void:
+	if config == null: return
+	var deletable: Array[int] = []
+	for value in ids:
+		var id := int(value)
+		var entry := _find_entry(id)
+		if entry.is_empty(): continue
+		if ScatterSchema.is_final_output(entry.get("type", "")):
+			update_status("最终输出是配方的唯一出口，不能删除。")
+			continue
+		if not deletable.has(id): deletable.append(id)
+	if deletable.is_empty(): return
+	var before := _make_graph_state(config, _selected_node_ids(false), active_paint_node_id)
+	var working := config.duplicate_recipe()
+	for id in deletable: working.remove_node(id)
+	working.ensure_graph()
+	var next_selection := _selected_node_ids(false)
+	for id in deletable: next_selection.erase(id)
+	var next_active := 0 if deletable.has(active_paint_node_id) else active_paint_node_id
+	var after := _make_graph_state(working, next_selection, next_active)
+	_commit_graph_action(action_name, before, after)
+
+
+func _copy_selected_nodes(cut := false) -> void:
+	var snapshot := _selected_nodes_snapshot()
+	if snapshot.is_empty(): return
+	_copy_buffer = snapshot.duplicate(true)
+	if cut:
+		_delete_node_ids(snapshot.get("ids", []), "剪切 Scatter 节点")
+	else:
+		update_status("已复制 %d 个 Scatter 节点。" % Array(snapshot.nodes).size())
+
+
+func _selected_nodes_snapshot() -> Dictionary:
+	if config == null: return {}
+	var ids := _selected_node_ids(true)
+	if ids.is_empty(): return {}
+	var id_set := {}
+	var copied_nodes: Array[Dictionary] = []
+	var minimum := Vector2(INF, INF)
+	var maximum := Vector2(-INF, -INF)
+	for id in ids:
+		id_set[id] = true
+		var entry := _find_entry(id).duplicate(true)
+		copied_nodes.append(entry)
+		var position: Vector2 = entry.get("position", Vector2.ZERO)
+		minimum = minimum.min(position)
+		maximum = maximum.max(position)
+	var copied_connections: Array[Dictionary] = []
+	for connection in config.connections:
+		if id_set.has(int(connection.get("from_id", 0))) and id_set.has(int(connection.get("to_id", 0))):
+			copied_connections.append(connection.duplicate(true))
+	return {
+		"ids": ids.duplicate(),
+		"nodes": copied_nodes,
+		"connections": copied_connections,
+		"center": (minimum + maximum) * 0.5,
+	}
+
+
+func _paste_nodes_requested() -> void:
+	var mouse_position := _graph.get_local_mouse_position()
+	if not Rect2(Vector2.ZERO, _graph.size).has_point(mouse_position):
+		mouse_position = _graph.size * 0.5
+	_paste_snapshot(_copy_buffer, _graph_position_from_local(mouse_position), "粘贴 Scatter 节点")
+
+
+func _duplicate_selected_nodes() -> void:
+	var snapshot := _selected_nodes_snapshot()
+	if snapshot.is_empty(): return
+	var center: Vector2 = snapshot.get("center", Vector2.ZERO)
+	_paste_snapshot(snapshot, center + Vector2(24, 24), "创建 Scatter 节点副本")
+
+
+func _paste_snapshot(snapshot: Dictionary, target_position: Vector2, action_name: String) -> void:
+	if config == null or Array(snapshot.get("nodes", [])).is_empty(): return
+	var before := _make_graph_state(config, _selected_node_ids(false), active_paint_node_id)
+	var working := config.duplicate_recipe()
+	var offset := target_position - Vector2(snapshot.get("center", Vector2.ZERO))
+	var remap := {}
+	var new_ids: Array[int] = []
+	var new_group_ids: Array[int] = []
+	var next_active := active_paint_node_id
+	for source_entry in snapshot.get("nodes", []):
+		var entry: Dictionary = source_entry.duplicate(true)
+		var old_id := int(entry.get("id", 0))
+		var new_id := working.allocate_id()
+		entry.id = new_id
+		entry.position = Vector2(entry.get("position", Vector2.ZERO)) + offset
+		working.nodes.append(entry)
+		remap[old_id] = new_id
+		new_ids.append(new_id)
+		if entry.get("type", "") == "group": new_group_ids.append(new_id)
+		if entry.get("type", "") == "paint_region" and next_active == 0: next_active = new_id
+	for source_connection in snapshot.get("connections", []):
+		var from_id := int(source_connection.get("from_id", 0))
+		var to_id := int(source_connection.get("to_id", 0))
+		if not remap.has(from_id) or not remap.has(to_id): continue
+		working.connect_nodes(
+			int(remap[from_id]), int(source_connection.get("from_port", 0)),
+			int(remap[to_id]), int(source_connection.get("to_port", 0)),
+		)
+	var final_output := working.final_output_node()
+	for group_id in new_group_ids:
+		if final_output.is_empty(): break
+		var port := 0
+		while not working.incoming_connection(int(final_output.id), port).is_empty(): port += 1
+		working.connect_nodes(group_id, 0, int(final_output.id), port)
+	working.ensure_graph()
+	var after := _make_graph_state(working, new_ids, next_active)
+	_commit_graph_action(action_name, before, after)
+
+
+func _toggle_selected_nodes() -> void:
+	var ids := _selected_node_ids(true)
+	if ids.is_empty() or config == null: return
+	var enable := false
+	for id in ids:
+		if not bool(_find_entry(id).get("enabled", true)):
+			enable = true
+			break
+	var before := _make_graph_state(config, _selected_node_ids(false), active_paint_node_id)
+	var working := config.duplicate_recipe()
+	for id in ids: working.find_node(id).enabled = enable
+	var after := _make_graph_state(working, _selected_node_ids(false), active_paint_node_id)
+	_commit_graph_action("启用 Scatter 节点" if enable else "停用 Scatter 节点", before, after)
+
+
+func _graph_position_from_local(local_position: Vector2) -> Vector2:
+	return (_graph.scroll_offset + local_position) / maxf(_graph.zoom, 0.001)
+
+
+func _make_graph_state(recipe: ScatterConfig, selected_ids: Array[int], paint_node_id: int) -> Dictionary:
+	return {
+		"nodes": recipe.nodes.duplicate(true),
+		"connections": recipe.connections.duplicate(true),
+		"next_id": recipe.next_id,
+		"selected_ids": selected_ids.duplicate(),
+		"active_paint_node_id": paint_node_id,
+		"scroll_offset": _graph.scroll_offset if _graph != null else Vector2.ZERO,
+		"zoom": _graph.zoom if _graph != null else 1.0,
+	}
+
+
+func _commit_graph_action(
+		action_name: String,
+		before: Dictionary,
+		after: Dictionary,
+		merge_mode := UndoRedo.MERGE_DISABLE,
+		execute := true,
+) -> void:
+	if config == null: return
+	var recipe := config
+	if _undo_redo == null:
+		if execute: _restore_graph_state(recipe, after)
+		return
+	var history_context: Object = target if is_instance_valid(target) else recipe
+	_undo_redo.create_action(action_name, merge_mode, history_context)
+	_undo_redo.add_do_method(self, "_restore_graph_state", recipe, after.duplicate(true))
+	_undo_redo.add_undo_method(self, "_restore_graph_state", recipe, before.duplicate(true))
+	_undo_redo.commit_action(execute)
+
+
+func _restore_graph_state(recipe: ScatterConfig, state: Dictionary) -> void:
+	var is_current_recipe := config == recipe
+	if is_current_recipe: history_action_active = true
+	var restored_nodes: Array = state.get("nodes", []).duplicate(true)
+	var restored_connections: Array = state.get("connections", []).duplicate(true)
+	recipe.nodes.assign(restored_nodes)
+	recipe.connections.assign(restored_connections)
+	recipe.next_id = int(state.get("next_id", recipe.next_id))
+	recipe.emit_changed()
+	if not is_current_recipe: return
+	var next_active := int(state.get("active_paint_node_id", 0))
+	if next_active != 0 and recipe.find_node(next_active).get("type", "") != "paint_region":
+		next_active = 0
+	if paint_active and next_active == 0: _stop_painting()
+	active_paint_node_id = next_active
+	rebuild_graph(false)
+	_restore_graph_view.call_deferred(recipe, state.duplicate(true))
+	recipe_changed.emit()
+	if recipe.auto_rebuild: build_requested.emit()
+	history_action_active = false
+
+
+func _restore_graph_view(recipe: ScatterConfig, state: Dictionary) -> void:
+	if config != recipe or _graph == null: return
+	_graph.zoom = float(state.get("zoom", _graph.zoom))
+	_graph.scroll_offset = Vector2(state.get("scroll_offset", _graph.scroll_offset))
+	for child in _graph.get_children():
+		if child is GraphNode: child.selected = false
+	for value in state.get("selected_ids", []):
+		var node := _graph.get_node_or_null(NodePath(str(int(value)))) as GraphNode
+		if node != null: node.selected = true
 
 
 func _on_seed_changed(value: float) -> void:
