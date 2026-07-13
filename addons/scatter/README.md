@@ -1,33 +1,40 @@
-# Scatter for Godot 4+
+# Scatter for Godot 4.7+
 
-Scatter is a visual instance-data editor attached directly to a native `MultiMeshInstance3D`. The recipe is stored in node metadata and the result is written to its native `MultiMesh`; no custom scene nodes are required.
+Scatter is an editor-only visual instance-data builder attached directly to a native `MultiMeshInstance3D`. It adds no scene nodes. A typed `ScatterGraph` is stored as metadata and Build writes the result to the native `MultiMesh`; at runtime the saved buffer is used without evaluating the graph.
 
-## Graph model
+## Workflow
 
-Every recipe can contain multiple **Group** nodes and one non-deletable **Final Output**:
+1. Select a `MultiMeshInstance3D` and open the Scatter bottom panel.
+2. Connect Region and Placement streams to one or more Scatter Group nodes.
+3. Connect each Scatter Set to Final Output.
+4. Build the graph, or enable Auto Build.
 
-- A **Group** receives one **Region** (green) and one **Placement** stream (purple), then emits one amber **Scatter Set**.
-- **Final Output** accepts any number of Scatter Sets and concatenates them into the native MultiMesh buffer in port order. One spare input socket is always shown.
-- Region sources include Box, Sphere, Path and Paint and can be combined with Union, Intersection and Subtract.
+The graph editor uses Godot's native `GraphEdit` and `GraphNode` styling. It supports selection, Delete, right-click commands, copy/cut/paste, duplicate, connection editing, node Enable controls, a minimap, and direct-property UndoRedo.
 
-Random, Grid, Poisson, Single, Edge and Proxy creators are output-only. Transform and filter nodes remain input/output processors; multiple Placement streams are combined explicitly with **Merge Placement**.
+## Node library
 
-Connections are persistent data, not decorative list-order wires. Ports reject type mismatches and cycles. Moving a node only changes canvas layout. Version 1 list recipes and version 2 Output nodes migrate automatically. The compact node UI keeps descriptions in tooltips and shows only ports, parameters, enable/delete controls and instance counts.
+- Region: Box, Sphere, Path, Paint, Union, Intersection, and Subtract.
+- Placement: Random, Grid, Poisson, random/even/continuous edge placement, Single, and Merge Placement.
+- Transform: Array, Transform, Position, Rotation, Scale, Random Transform, Random Rotation, Look At, Snap, Relax, Clusterize, and Project.
+- Filter and data: Remove Outside, Remove Random, Proxy Graph, Random Color, and Random Custom Data.
+- Output: Scatter Group and Final Output. Final Output accepts ordered, variadic Scatter Sets.
 
-## Paint Region layers
+Paint Region stores typed stroke resources. The 3D viewport tool provides paint/erase, brush preview, persistent region outlines, and UndoRedo. Proxy Graph can consume another native `MultiMeshInstance3D` recipe and detects dependency cycles.
 
-Add any number of Paint Region nodes. Select or activate one node, choose Paint/Erase in the toolbar, then draw on a collidable 3D surface. Each node stores an independent stroke layer that can be combined with other Region nodes.
+## Public extension API
 
-The viewport shows a live brush ring, cross and surface normal plus persistent stroke outlines. Connected Region sources are highlighted; disconnected sources are dimmed. Painting is UndoRedo-aware. Paint controls the allowed area, while Random/Grid/Poisson Placement nodes control density.
+Custom addons can register model and editor-view scripts without modifying Scatter:
 
-## Features
+```gdscript
+func _enter_tree() -> void:
+    ScatterNodeRegistry.register_node(MyScatterNode, MyScatterNodeView)
 
-- Regions: Box, Sphere, Path, Paint, Union, Intersection, Subtract.
-- Placement: random, grid, Poisson disk, random/even/continuous edge placement, single, and merge.
-- Processing: array, transform/position/rotation/scale, random transform/rotation, look-at, snap, relax, texture clustering, physics projection and slope filtering.
-- Filtering and data: outside/subtraction filtering, random removal, instance color, custom data, and proxy recipes.
-- Workflow: deterministic global/per-node seeds, automatic preview, `.tres` recipes, native MultiMesh adoption, GraphEdit minimap, Region gizmos and undoable painting.
+func _exit_tree() -> void:
+    ScatterNodeRegistry.unregister_node(&"my_scatter_node")
+```
 
-Select a `MultiMeshInstance3D` to open the bottom panel. The starter graph contains a Box Region and a Random Placement chain connected to one Group, whose Scatter Set feeds Final Output. All controls include Chinese labels and tooltips.
+`ScatterNode` owns typed parameters, stable `StringName` ports, validation, evaluation, disabled behavior, seed policy, and preview geometry. `ScatterNodeView` owns only GraphNode layout and editor interaction. Core code has no Editor API dependency.
 
-One `MultiMesh` can reference one Mesh. Use one native `MultiMeshInstance3D` per asset and share recipes or distributions through Proxy when scattering multiple assets.
+Recipes are native `.tres` `ScatterGraph` resources. This architecture intentionally does not import the earlier Dictionary recipe formats.
+
+See `res://addons/scatter/demo/scatter_demo.tscn` for a saved native MultiMesh buffer and typed recipe.
