@@ -100,9 +100,6 @@ Final Output
 
 Change the Box size, adjust the Random amount, and press **Build** to see the first result.
 
-> **Image placeholder — Inspector setup**<br>
-> Add a screenshot showing the Create and Load controls on an unconfigured `MultiMeshInstance3D`, followed by the configured Open Editor and Build controls.
-
 ## Example graphs
 
 ### Scatter inside a volume
