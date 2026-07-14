@@ -7,6 +7,7 @@ const PathExtension := preload("res://addons/scatter/editor/extensions/scatter_p
 const PaintExtension := preload("res://addons/scatter/editor/extensions/scatter_paint_editor_extension.gd")
 
 const ENTRIES := [
+	[preload("res://addons/scatter/core/nodes/region/scatter_path_extrude_node.gd"), preload("res://addons/scatter/editor/views/region/scatter_path_extrude_view.gd")],
 	[preload("res://addons/scatter/core/nodes/region/scatter_path_tube_node.gd"), preload("res://addons/scatter/editor/views/region/scatter_path_tube_view.gd")],
 	[preload("res://addons/scatter/core/nodes/region/scatter_shape_transform_node.gd"), preload("res://addons/scatter/editor/views/region/scatter_shape_transform_view.gd")],
 	[preload("res://addons/scatter/core/nodes/output/scatter_final_output_node.gd"), preload("res://addons/scatter/editor/views/output/scatter_final_output_view.gd")],

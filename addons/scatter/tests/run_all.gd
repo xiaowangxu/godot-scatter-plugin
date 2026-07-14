@@ -6,6 +6,7 @@ const TESTS := [
 	"res://addons/scatter/tests/unit/test_node_services.gd",
 	"res://addons/scatter/tests/unit/test_architecture_rules.gd",
 	"res://addons/scatter/tests/unit/test_editor_architecture.gd",
+	"res://addons/scatter/tests/unit/test_path_extrude.gd",
 ]
 
 

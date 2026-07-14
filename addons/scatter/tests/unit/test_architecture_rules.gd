@@ -18,7 +18,7 @@ func _init() -> void:
 	assert(han.compile("[\\x{4E00}-\\x{9FFF}]") == OK)
 	for path in editor_files:
 		assert(han.search(FileAccess.get_file_as_string(path)) == null, "Editor UI source must use English tr() text: %s" % path)
-	assert(ScatterNodeRegistry.type_ids().size() == 35)
+	assert(ScatterNodeRegistry.type_ids().size() == 36)
 	assert(not evaluator.contains("ScatterBoxNode"))
 	var gizmo := FileAccess.get_file_as_string("res://addons/scatter/editor/gizmo/scatter_gizmo_plugin.gd")
 	assert(not gizmo.contains("ScatterPathNode"))
