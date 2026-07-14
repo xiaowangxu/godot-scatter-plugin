@@ -48,11 +48,12 @@ func _test_sampling() -> void:
 	transform_node.position = Vector3(7, 2, -3)
 	transform_node.rotation = Vector3(0, 90, 0)
 	transform_node.scale = Vector3(2, 1, 0.5)
+	transform_node.set_dynamic_port_type(ScatterValueTypeRegistry.REGULAR_REGION)
 	var transform_inputs := ScatterNodeInputs.new()
 	var pivot_box := ScatterBoxRegion.new(Vector3(4, 1, -2), Vector3(4, 2, 6), Vector3(0, 30, 0))
-	transform_inputs.add_value(&"shape", pivot_box)
+	transform_inputs.add_value(&"geometry", pivot_box)
 	var transformed_outputs := transform_node.evaluate(null, transform_inputs)
-	var transformed_shape := transformed_outputs.get_value(&"shape") as ScatterRegularRegionValue
+	var transformed_shape := transformed_outputs.get_value(&"geometry") as ScatterRegularRegionValue
 	var shape_rotation := Basis.from_euler(transform_node.rotation * PI / 180.0)
 	var shape_delta := Transform3D(
 		shape_rotation.scaled_local(transform_node.scale),
@@ -67,13 +68,13 @@ func _test_sampling() -> void:
 	assert(transformed_shape.get_local_transform().is_equal_approx(expected_transform))
 	assert(transformed_shape.sample_local(0.37).is_equal_approx(expected_mapping * pivot_box.sample_local(0.37)))
 	assert(transformed_shape.contains_local(expected_mapping * pivot_box.center))
-	assert(transformed_outputs.get_value(&"path") is ScatterPathValue)
 	var chained_node := ScatterShapeTransformNode.new()
 	chained_node.position = Vector3(-2, 4, 1)
 	chained_node.rotation = Vector3(15, 0, 0)
+	chained_node.set_dynamic_port_type(ScatterValueTypeRegistry.REGULAR_REGION)
 	var chained_inputs := ScatterNodeInputs.new()
-	chained_inputs.add_value(&"shape", transformed_shape)
-	var chained_shape := chained_node.evaluate(null, chained_inputs).get_value(&"shape") as ScatterRegularRegionValue
+	chained_inputs.add_value(&"geometry", transformed_shape)
+	var chained_shape := chained_node.evaluate(null, chained_inputs).get_value(&"geometry") as ScatterRegularRegionValue
 	var chained_transform := Transform3D(
 		Basis.from_euler(chained_node.rotation * PI / 180.0),
 		chained_node.position,
@@ -98,9 +99,10 @@ func _test_path_and_poisson() -> void:
 	var path_transform_node := ScatterShapeTransformNode.new()
 	path_transform_node.position = Vector3(1, 0, 0)
 	path_transform_node.rotation = Vector3(0, 30, 0)
+	path_transform_node.set_dynamic_port_type(ScatterValueTypeRegistry.PATH)
 	var path_inputs := ScatterNodeInputs.new()
-	path_inputs.add_value(&"path", framed_path)
-	var output_path := path_transform_node.evaluate(null, path_inputs).get_value(&"path") as ScatterPathValue
+	path_inputs.add_value(&"geometry", framed_path)
+	var output_path := path_transform_node.evaluate(null, path_inputs).get_value(&"geometry") as ScatterPathValue
 	var path_delta := Transform3D(Basis.from_euler(path_transform_node.rotation * PI / 180.0), path_transform_node.position)
 	var path_mapping := path_frame * path_delta * path_frame.affine_inverse()
 	assert(output_path.get_local_transform().is_equal_approx(path_frame * path_delta))

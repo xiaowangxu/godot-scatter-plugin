@@ -2,6 +2,8 @@
 class_name ScatterGraph
 extends Resource
 
+const ConnectionService := preload("res://addons/scatter/core/services/scatter_connection_service.gd")
+
 @export var seed := 0
 @export var auto_rebuild := true
 @export_flags_3d_physics var collision_mask := 1
@@ -99,41 +101,18 @@ func connect_nodes(
 		to_port_id: StringName,
 		order := -1,
 ) -> ScatterConnection:
-	var from_node := find_node(from_node_id)
-	var to_node := find_node(to_node_id)
-	if from_node == null or to_node == null:
-		return null
-	var output_port := from_node.output_port(from_port_id)
-	var input_port := to_node.input_port(to_port_id)
-	if (
-		output_port == null
-		or input_port == null
-		or not output_port.connectable
-		or not input_port.connectable
-		or not ScatterValueTypeRegistry.is_assignable(output_port.type_id, input_port.type_id)
-	):
-		return null
-	if would_create_cycle(from_node_id, to_node_id):
-		return null
-	if not input_port.variadic:
-		for index in range(connections.size() - 1, -1, -1):
-			var current := connections[index]
-			if current.to_node_id == to_node_id and current.to_port_id == to_port_id:
-				connections.remove_at(index)
-	else:
-		if order < 0:
-			order = incoming_connections(to_node_id, to_port_id).size()
-	var connection := ScatterConnection.create(
+	var plan: Dictionary = ConnectionService.plan_connect(
+		self,
 		from_node_id,
 		from_port_id,
 		to_node_id,
 		to_port_id,
-		maxi(order, 0),
+		order,
 	)
-	connections.append(connection)
-	normalize_connection_orders()
-	emit_changed()
-	return connection
+	if not bool(plan.accepted):
+		return null
+	ConnectionService.apply(self, plan)
+	return plan.added
 
 
 func add_connection(connection: ScatterConnection) -> void:
@@ -170,9 +149,8 @@ func disconnect_nodes(
 			and connection.to_port_id == to_port_id
 			and (order < 0 or connection.order == order)
 		):
-			connections.remove_at(index)
-			normalize_connection_orders()
-			emit_changed()
+			var plan: Dictionary = ConnectionService.plan_disconnect(self, connection)
+			ConnectionService.apply(self, plan)
 			return connection
 	return null
 

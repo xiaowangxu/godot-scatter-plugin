@@ -86,6 +86,35 @@ func _init() -> void:
 	))
 	await process_frame
 	assert(graph_editor.get_connection_list().size() == connection_count)
+	var clipboard_graph := ScatterGraph.new()
+	var clipboard_box := ScatterBoxNode.new()
+	var clipboard_transform := ScatterShapeTransformNode.new()
+	clipboard_graph.add_node(clipboard_box)
+	clipboard_graph.add_node(clipboard_transform)
+	assert(clipboard_box.get_output_ports()[0].label == "Regular Region")
+	assert(clipboard_graph.connect_nodes(
+		clipboard_box.node_id,
+		&"region",
+		clipboard_transform.node_id,
+		&"geometry",
+	) != null)
+	assert(clipboard_transform.geometry_type == ScatterValueTypeRegistry.REGULAR_REGION)
+	var adaptive_clipboard := ScatterGraphClipboard.new()
+	adaptive_clipboard.capture(clipboard_graph, [clipboard_transform.node_id])
+	var isolated_payload := adaptive_clipboard.instantiate(clipboard_graph, Vector2(200, 200))
+	var isolated_transform := isolated_payload.nodes[0] as ScatterShapeTransformNode
+	assert(isolated_transform.geometry_type == ScatterValueTypeRegistry.DYNAMIC_GEOMETRY)
+	assert(isolated_transform.get_input_ports()[0].label == "Shape / Path")
+	adaptive_clipboard.capture(clipboard_graph, [clipboard_box.node_id, clipboard_transform.node_id])
+	var connected_payload := adaptive_clipboard.instantiate(clipboard_graph, Vector2(400, 200))
+	var connected_transform: ScatterShapeTransformNode
+	for copied_node in connected_payload.nodes:
+		if copied_node is ScatterShapeTransformNode:
+			connected_transform = copied_node
+			break
+	assert(connected_transform != null)
+	assert(connected_transform.geometry_type == ScatterValueTypeRegistry.REGULAR_REGION)
+	assert(connected_transform.get_input_ports()[0].label == "Regular Region")
 	var context := ScatterEditorContext.new()
 	context.target = target
 	context.graph = graph
@@ -98,6 +127,9 @@ func _init() -> void:
 		root.add_child(view)
 		view.bind_model(prototype, context)
 		assert(view.title == prototype.get_caption())
+		if prototype is ScatterBoxNode or prototype is ScatterSphereNode:
+			var port_label := view.get_child(1) as Label
+			assert(port_label != null and port_label.text == "Regular Region")
 		var top_padding := view.get_child(0) as Control
 		var bottom_padding := view.get_child(view.get_child_count() - 1) as Control
 		assert(top_padding.name == &"ContentPaddingTop")

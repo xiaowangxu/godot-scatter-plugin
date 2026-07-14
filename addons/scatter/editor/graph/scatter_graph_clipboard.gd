@@ -63,7 +63,35 @@ func instantiate(
 			source.to_port_id,
 			source.order,
 		))
+	_refresh_dynamic_port_types(created_nodes, created_connections)
 	return {
 		"nodes": created_nodes,
 		"connections": created_connections,
 	}
+
+
+func _refresh_dynamic_port_types(
+		created_nodes: Array[ScatterNode],
+		created_connections: Array[ScatterConnection],
+) -> void:
+	# Adaptive port state is derived from the copied subgraph, not from the
+	# source node. Connections crossing the clipboard boundary are deliberately
+	# absent, so a node copied on its own becomes unbound again.
+	var copied_graph := ScatterGraph.new()
+	copied_graph.nodes = created_nodes
+	copied_graph.connections = created_connections
+	for node in created_nodes:
+		var dynamic_port: ScatterPort
+		for port in node.get_input_ports():
+			if node.is_dynamic_port_type(port.id, false):
+				dynamic_port = port
+				break
+		if dynamic_port == null:
+			for port in node.get_output_ports():
+				if node.is_dynamic_port_type(port.id, true):
+					dynamic_port = port
+					break
+		if dynamic_port == null:
+			continue
+		var inferred := node.infer_dynamic_port_type(copied_graph, created_connections)
+		node.set_dynamic_port_type(inferred)

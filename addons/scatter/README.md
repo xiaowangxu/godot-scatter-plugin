@@ -28,7 +28,7 @@ value
 └── instances
 ```
 
-Paths are one-dimensional arc-length curves. Path Tube Region converts a Path to a volume Shape. Shape Transform applies composable MultiMesh-local position, rotation, and scale to either a Shape or Path while preserving the explicit value type. Boolean operators accept Shape and return Shape, so their Random sampling uses deterministic rejection sampling over the combined local AABB. Regular Box and Sphere regions use exact direct sampling. Poisson uses deterministic 3D Bridson sampling.
+Paths are one-dimensional arc-length curves. Path Tube Region converts a Path to a volume Shape. Shape Transform has one bidirectional adaptive geometry flow: connecting either side resolves both ports to the most precise Shape, Region, Regular Region, or Path type, and incompatible connections are removed in the same UndoRedo action. It applies composable MultiMesh-local position, rotation, and scale without degrading that resolved type. Boolean operators accept Shape and return Shape, so their Random sampling uses deterministic rejection sampling over the combined local AABB. Regular Box and Sphere regions use exact direct sampling. Poisson uses deterministic 3D Bridson sampling.
 
 Every stored instance transform is MultiMesh Local. Shape and Path sources may be authored in Global or Local space; Global values are frozen into target-local values during evaluation. Instance space is available only on Instances transform nodes.
 

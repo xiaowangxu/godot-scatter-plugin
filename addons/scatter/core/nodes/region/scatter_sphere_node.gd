@@ -19,7 +19,7 @@ func get_color() -> Color:
 
 
 func get_output_ports() -> Array[ScatterPort]:
-	return [ScatterPort.new(&"region", "Region", ScatterValueTypeRegistry.REGULAR_REGION)]
+	return [ScatterPort.new(&"region", "Regular Region", ScatterValueTypeRegistry.REGULAR_REGION)]
 
 
 func evaluate_value(context: ScatterEvaluationContext, _inputs: ScatterNodeInputs) -> ScatterValue:

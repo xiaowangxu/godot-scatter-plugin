@@ -73,7 +73,7 @@ func _refresh_valid_connection_types() -> void:
 		call("clear_valid_connection_types")
 	for actual in ScatterValueTypeRegistry.registered_types():
 		for expected in ScatterValueTypeRegistry.registered_types():
-			if ScatterValueTypeRegistry.is_assignable(actual, expected):
+			if ScatterValueTypeRegistry.is_visual_connection_valid(actual, expected):
 				add_valid_connection_type(
 					ScatterValueTypeRegistry.visual_id(actual),
 					ScatterValueTypeRegistry.visual_id(expected),

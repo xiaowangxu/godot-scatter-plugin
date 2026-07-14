@@ -82,6 +82,33 @@ func validate(_context: ScatterEvaluationContext) -> PackedStringArray:
 	return PackedStringArray()
 
 
+func is_dynamic_port_type(_port_id: StringName, _is_output: bool) -> bool:
+	return false
+
+
+func get_dynamic_port_type(_port_id: StringName, _is_output: bool) -> StringName:
+	return &""
+
+
+func propose_dynamic_port_type(
+		_port_id: StringName,
+		_is_output: bool,
+		_peer_type: StringName,
+) -> StringName:
+	return &""
+
+
+func set_dynamic_port_type(_type_id: StringName) -> void:
+	pass
+
+
+func infer_dynamic_port_type(
+		_graph: ScatterGraph,
+		_remaining_connections: Array[ScatterConnection],
+) -> StringName:
+	return &""
+
+
 func input_port(port_id: StringName) -> ScatterPort:
 	for port in get_input_ports():
 		if port.id == port_id:

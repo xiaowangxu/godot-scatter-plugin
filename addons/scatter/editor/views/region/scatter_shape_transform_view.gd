@@ -4,8 +4,7 @@ extends ScatterNodeView
 
 
 func _build_ports() -> void:
-	add_port_row(&"shape", &"shape", "Shape")
-	add_port_row(&"path", &"path", "Path")
+	add_port_row(&"geometry", &"geometry", model.get_input_ports()[0].label)
 
 
 func _build_properties() -> void:

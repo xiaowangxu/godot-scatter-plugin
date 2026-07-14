@@ -4,7 +4,7 @@ extends ScatterNodeView
 
 
 func _build_ports() -> void:
-	add_port_row(&"", &"region", "Region")
+	add_port_row(&"", &"region", "Regular Region")
 
 
 func _build_properties() -> void:

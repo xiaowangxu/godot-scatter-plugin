@@ -2,6 +2,8 @@
 class_name ScatterGraphController
 extends RefCounted
 
+const ConnectionService := preload("res://addons/scatter/core/services/scatter_connection_service.gd")
+
 var graph: ScatterGraph
 var target: MultiMeshInstance3D
 var undo_redo: EditorUndoRedoManager
@@ -68,51 +70,48 @@ func connect_ports(
 		to_port_id: StringName,
 		order := -1,
 ) -> bool:
-	var from_node := graph.find_node(from_node_id)
-	var to_node := graph.find_node(to_node_id)
-	if from_node == null or to_node == null:
+	var plan: Dictionary = ConnectionService.plan_connect(
+		graph,
+		from_node_id,
+		from_port_id,
+		to_node_id,
+		to_port_id,
+		order,
+	)
+	if not bool(plan.accepted):
 		return false
-	var output_port := from_node.output_port(from_port_id)
-	var input_port := to_node.input_port(to_port_id)
-	if output_port == null or input_port == null or not ScatterValueTypeRegistry.is_assignable(output_port.type_id, input_port.type_id):
-		return false
-	if graph.would_create_cycle(from_node_id, to_node_id):
-		return false
-	var replaced: Array[ScatterConnection] = []
-	if input_port.variadic:
-		if order < 0:
-			order = graph.incoming_connections(to_node_id, to_port_id).size()
-	else:
-		replaced = graph.incoming_connections(to_node_id, to_port_id)
-		order = 0
-	var connection := ScatterConnection.create(from_node_id, from_port_id, to_node_id, to_port_id, order)
 	if undo_redo == null:
-		for previous in replaced:
-			graph.remove_connection(previous)
-		graph.add_connection(connection)
+		ConnectionService.apply(graph, plan)
 		_notify_structure_changed()
 		return true
 	undo_redo.create_action(tr("Connect Scatter Nodes"), UndoRedo.MERGE_DISABLE, target)
-	for previous in replaced:
+	for previous in plan.removed:
 		undo_redo.add_do_method(graph, "remove_connection", previous)
 		undo_redo.add_undo_method(graph, "add_connection", previous)
-	undo_redo.add_do_method(graph, "add_connection", connection)
-	undo_redo.add_undo_method(graph, "remove_connection", connection)
+	for change in plan.type_changes:
+		undo_redo.add_do_method(change.node, "set_dynamic_port_type", change.after)
+		undo_redo.add_undo_method(change.node, "set_dynamic_port_type", change.before)
+	undo_redo.add_do_method(graph, "add_connection", plan.added)
+	undo_redo.add_undo_method(graph, "remove_connection", plan.added)
 	_add_structure_callbacks()
 	undo_redo.commit_action()
 	return true
 
 
 func disconnect_connection(connection: ScatterConnection) -> void:
-	if connection == null:
+	var plan: Dictionary = ConnectionService.plan_disconnect(graph, connection)
+	if not bool(plan.accepted):
 		return
 	if undo_redo == null:
-		graph.remove_connection(connection)
+		ConnectionService.apply(graph, plan)
 		_notify_structure_changed()
 		return
 	undo_redo.create_action(tr("Disconnect Scatter Nodes"), UndoRedo.MERGE_DISABLE, target)
 	undo_redo.add_do_method(graph, "remove_connection", connection)
 	undo_redo.add_undo_method(graph, "add_connection", connection)
+	for change in plan.type_changes:
+		undo_redo.add_do_method(change.node, "set_dynamic_port_type", change.after)
+		undo_redo.add_undo_method(change.node, "set_dynamic_port_type", change.before)
 	_add_structure_callbacks()
 	undo_redo.commit_action()
 
