@@ -42,6 +42,7 @@ const ENTRIES := [
 	[preload("res://addons/scatter/core/nodes/filter/scatter_remove_random_node.gd"), preload("res://addons/scatter/editor/views/filter/scatter_remove_random_view.gd")],
 	[preload("res://addons/scatter/core/nodes/data/scatter_proxy_node.gd"), preload("res://addons/scatter/editor/views/data/scatter_proxy_view.gd")],
 	[preload("res://addons/scatter/core/nodes/data/scatter_random_color_node.gd"), preload("res://addons/scatter/editor/views/data/scatter_random_color_view.gd")],
+	[preload("res://addons/scatter/core/nodes/data/scatter_set_color_node.gd"), preload("res://addons/scatter/editor/views/data/scatter_set_color_view.gd")],
 	[preload("res://addons/scatter/core/nodes/data/scatter_random_custom_data_node.gd"), preload("res://addons/scatter/editor/views/data/scatter_random_custom_data_view.gd")],
 ]
 

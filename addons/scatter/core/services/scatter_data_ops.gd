@@ -2,6 +2,17 @@
 class_name ScatterDataOps
 extends RefCounted
 
+static func set_colors(
+		values: Array[Color],
+		amount: int,
+		color: Color,
+) -> void:
+	if values.size() > amount:
+		values.resize(amount)
+	while values.size() < amount:
+		values.append(color)
+	for index in values.size():
+		values[index] = color
 
 static func randomize_colors(
 		values: Array[Color],
