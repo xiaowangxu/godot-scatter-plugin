@@ -7,8 +7,7 @@ Scatter is a visual, editor-only scattering tool for Godot's native `MultiMeshIn
 
 It does not add custom nodes to your scene tree and it does not evaluate the graph at runtime. A built scene contains an ordinary `MultiMeshInstance3D`, so runtime rendering stays on Godot's standard MultiMesh path.
 
-> **Image placeholder — Graph editor overview**<br>
-> Add a screenshot showing a complete Scatter graph in the bottom panel and its generated instances in the 3D viewport.
+![preview](./preview.png)
 
 ## Why Scatter?
 
