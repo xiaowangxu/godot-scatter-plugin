@@ -18,58 +18,82 @@ func _parse_begin(object: Object) -> void:
 	var graph := ScatterGraphAttachment.get_graph(target)
 	var has_graph := graph != null
 	var panel := VBoxContainer.new()
-	var header := HBoxContainer.new()
-	var label := Label.new()
-	label.text = tr("Scatter Graph")
-	label.tooltip_text = tr("Editor-only instance generation attached directly to this MultiMeshInstance3D.")
-	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	header.add_child(label)
-	var badge := Label.new()
-	badge.text = tr("Configured") if has_graph else tr("Not Configured")
-	badge.modulate = Color("78c69a") if has_graph else Color("a5abb5")
-	header.add_child(badge)
-	panel.add_child(header)
+	panel.add_theme_constant_override(&"separation", 4)
 	if not has_graph:
-		var configure := Button.new()
-		configure.text = tr("Configure Scatter")
-		configure.tooltip_text = tr("Create a new linked Scatter recipe for this MultiMeshInstance3D.")
-		configure.pressed.connect(func(): configure_requested.emit(target))
-		panel.add_child(configure)
-		var load := Button.new()
-		load.text = tr("Load Scatter Recipe")
-		load.tooltip_text = tr("Link an existing Scatter recipe resource to this MultiMeshInstance3D.")
-		load.pressed.connect(func(): load_requested.emit(target))
-		panel.add_child(load)
+		var setup_actions := HBoxContainer.new()
+		var configure := _action_button(
+			"Create",
+			&"Add",
+			"Create and link a new Scatter recipe for this MultiMeshInstance3D.",
+			func(): configure_requested.emit(target),
+		)
+		configure.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		setup_actions.add_child(configure)
+		var load := _action_button(
+			"Load",
+			&"Load",
+			"Link an existing Scatter recipe resource to this MultiMeshInstance3D.",
+			func(): load_requested.emit(target),
+		)
+		load.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		setup_actions.add_child(load)
+		panel.add_child(setup_actions)
 	else:
 		var recipe_path := Label.new()
 		recipe_path.text = graph.resource_path
 		recipe_path.tooltip_text = graph.resource_path
-		recipe_path.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		recipe_path.modulate = Color("a5abb5")
+		recipe_path.clip_text = true
+		recipe_path.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		recipe_path.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 		panel.add_child(recipe_path)
+		
 		var actions := HBoxContainer.new()
-		var open := Button.new()
-		open.text = tr("Open Scatter Editor")
+		var open := _action_button(
+			"Open Editor",
+			&"Edit",
+			"Open the linked Scatter recipe in the graph editor.",
+			func(): open_requested.emit(target),
+		)
 		open.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		open.tooltip_text = tr("Open the linked Scatter recipe in the graph editor.")
-		open.pressed.connect(func(): open_requested.emit(target))
 		actions.add_child(open)
-		var rebuild := Button.new()
-		rebuild.text = tr("Build")
-		rebuild.tooltip_text = tr("Evaluate the graph and update the saved MultiMesh buffer.")
-		rebuild.pressed.connect(func(): rebuild_requested.emit(target))
+		var rebuild := _action_button(
+			"Build",
+			&"Play",
+			"Evaluate the graph and update the saved MultiMesh buffer.",
+			func(): rebuild_requested.emit(target),
+		)
 		actions.add_child(rebuild)
+		var load := _action_button(
+			"",
+			&"Load",
+			"Replace this recipe link with another Scatter recipe resource.",
+			func(): load_requested.emit(target),
+			true,
+		)
+		actions.add_child(load)
+		var detach := _action_button(
+			"",
+			&"Remove",
+			"Remove the Scatter graph while preserving the current MultiMesh buffer.",
+			func(): detach_requested.emit(target),
+			true,
+		)
+		actions.add_child(detach)
 		panel.add_child(actions)
-		var load := Button.new()
-		load.text = tr("Load Different Recipe")
-		load.flat = true
-		load.tooltip_text = tr("Replace this recipe link with another Scatter recipe resource.")
-		load.pressed.connect(func(): load_requested.emit(target))
-		panel.add_child(load)
-		var detach := Button.new()
-		detach.text = tr("Detach Recipe (Keep Instances)")
-		detach.flat = true
-		detach.tooltip_text = tr("Remove the Scatter graph while preserving the current MultiMesh buffer.")
-		detach.pressed.connect(func(): detach_requested.emit(target))
-		panel.add_child(detach)
 	add_custom_control(panel)
+
+
+func _action_button(
+	text: String,
+	icon_name: StringName,
+	tooltip: String,
+	callback: Callable,
+	flat := false,
+) -> Button:
+	var button := Button.new()
+	button.text = tr(text)
+	button.icon = EditorInterface.get_editor_theme().get_icon(icon_name, &"EditorIcons")
+	button.tooltip_text = tr(tooltip)
+	button.flat = flat
+	button.pressed.connect(callback)
+	return button

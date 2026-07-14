@@ -61,19 +61,35 @@ func save() -> Error:
 	var error := ResourceSaver.save(snapshot, recipe_path)
 	if error != OK:
 		return error
-	var refreshed := ResourceLoader.load(
+	var saved_graph := ResourceLoader.load(
 		recipe_path,
 		"ScatterGraph",
-		ResourceLoader.CACHE_MODE_REPLACE,
+		ResourceLoader.CACHE_MODE_IGNORE,
 	) as ScatterGraph
-	if refreshed == null:
-		refreshed = ResourceLoader.load(
-			recipe_path,
-			"ScatterGraph",
-			ResourceLoader.CACHE_MODE_IGNORE,
-		) as ScatterGraph
-	if refreshed == null:
+	if saved_graph == null:
 		return ERR_CANT_OPEN
-	source_graph = refreshed
+	_sync_source_graph(saved_graph)
 	dirty = false
 	return OK
+
+
+func _sync_source_graph(saved_graph: ScatterGraph) -> void:
+	if source_graph == null:
+		source_graph = saved_graph
+		return
+	var existing_nodes: Dictionary[int, ScatterNode] = {}
+	for node in source_graph.nodes:
+		existing_nodes[node.node_id] = node
+	var synchronized_nodes: Array[ScatterNode] = []
+	for saved_node in saved_graph.nodes:
+		var existing := existing_nodes.get(saved_node.node_id) as ScatterNode
+		if existing != null and existing.get_script() == saved_node.get_script():
+			existing.copy_from_resource(saved_node)
+			existing.emit_changed()
+			synchronized_nodes.append(existing)
+		else:
+			synchronized_nodes.append(saved_node)
+	saved_graph.nodes = synchronized_nodes
+	source_graph.copy_from_resource(saved_graph)
+	source_graph.normalize_connection_orders()
+	source_graph.emit_changed()

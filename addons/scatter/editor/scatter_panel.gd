@@ -40,6 +40,7 @@ func _ready() -> void:
 	_work_area = HSplitContainer.new()
 	_work_area.name = "WorkArea"
 	_work_area.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_work_area.set_split_offsets([380])
 	add_child(_work_area)
 	
 	_sidebar = ScatterRecipeSidebar.new()

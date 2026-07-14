@@ -314,6 +314,7 @@ graph_position = Vector2(260, 620)
 [sub_resource type="Resource" id="Resource_fpl2y"]
 script = ExtResource("12_7r0qy")
 ray_length = 100.0
+align_with_collision_normal = true
 node_id = 24
 graph_position = Vector2(1700, 560)
 
@@ -326,7 +327,7 @@ graph_position = Vector2(2700, 560)
 
 [sub_resource type="Resource" id="Resource_fhyqu"]
 script = ExtResource("12_cf6nt")
-amount = 2
+amount = 4
 offset = Vector3(10, 0, 0)
 node_id = 30
 graph_position = Vector2(3300, 560)
@@ -388,6 +389,7 @@ script = ExtResource("14_7r0qy")
 spacing = Vector3(1, 1, 1)
 node_id = 48
 graph_position = Vector2(2060, 100)
+enabled = false
 
 [sub_resource type="Resource" id="Resource_nygi4"]
 script = ExtResource("9_cf6nt")
@@ -457,20 +459,22 @@ graph_position = Vector2(4340, 1440)
 
 [sub_resource type="Resource" id="Resource_87wb2"]
 script = ExtResource("11_r3kxb")
-radius = 1.001
-max_points = 2000
+radius = 0.751
+max_points = 5000
 node_id = 69
-graph_position = Vector2(1920, 1440)
+graph_position = Vector2(1920, 1420)
 
 [sub_resource type="Resource" id="Resource_qoop4"]
 script = ExtResource("15_7r0qy")
-position = Vector3(0, 5, 0)
+position = Vector3(0, 5, -4)
 geometry_type = &"region"
 node_id = 70
 graph_position = Vector2(1120, 1480)
 
 [sub_resource type="Resource" id="Resource_i10ml"]
 script = ExtResource("12_7r0qy")
+ray_direction = Vector3(1, -1, 0)
+ray_length = 100.0
 align_with_collision_normal = true
 node_id = 71
 graph_position = Vector2(2620, 1440)
@@ -480,4 +484,4 @@ script = ExtResource("1")
 seed = -844082688
 nodes = Array[ExtResource("3")]([SubResource("Resource_wplii"), SubResource("Resource_y5vgf"), SubResource("Resource_t0pu3"), SubResource("Resource_0rd23"), SubResource("Resource_qemmf"), SubResource("Resource_a6f5n"), SubResource("Resource_jsw7w"), SubResource("Resource_1iprn"), SubResource("Resource_fpl2y"), SubResource("Resource_jd3gq"), SubResource("Resource_fhyqu"), SubResource("Resource_l6nb5"), SubResource("Resource_axgix"), SubResource("Resource_5av5j"), SubResource("Resource_j080x"), SubResource("Resource_sos5r"), SubResource("Resource_axao0"), SubResource("Resource_df85k"), SubResource("Resource_ld6sy"), SubResource("Resource_ga5cv"), SubResource("Resource_nygi4"), SubResource("Resource_gg1av"), SubResource("Resource_fl314"), SubResource("Resource_w7ei8"), SubResource("Resource_8p8fm"), SubResource("Resource_8nmgm"), SubResource("Resource_k6tv7"), SubResource("Resource_styda"), SubResource("Resource_r1qfw"), SubResource("Resource_yfgmf"), SubResource("Resource_87wb2"), SubResource("Resource_qoop4"), SubResource("Resource_i10ml")])
 connections = Array[ExtResource("2")]([SubResource("Resource_mlwl4"), SubResource("Resource_82xxo"), SubResource("Resource_arqv2"), SubResource("Resource_6imvf"), SubResource("Resource_mrk44"), SubResource("Resource_xby7h"), SubResource("Resource_1ahdl"), SubResource("Resource_rxiw2"), SubResource("Resource_vrpv2"), SubResource("Resource_42fja"), SubResource("Resource_e08n3"), SubResource("Resource_dwg6a"), SubResource("Resource_x3ahd"), SubResource("Resource_iged6"), SubResource("Resource_7i80s"), SubResource("Resource_3xf6u"), SubResource("Resource_yxgrf"), SubResource("Resource_qm454"), SubResource("Resource_6yy5d"), SubResource("Resource_qcx7n"), SubResource("Resource_piovh"), SubResource("Resource_qoh3i"), SubResource("Resource_dl86w"), SubResource("Resource_ybrwp"), SubResource("Resource_4gj4e"), SubResource("Resource_meryo"), SubResource("Resource_komsr"), SubResource("Resource_fglg8"), SubResource("Resource_04ml6"), SubResource("Resource_2wvhd"), SubResource("Resource_s3syr"), SubResource("Resource_edrxp"), SubResource("Resource_d1ua6"), SubResource("Resource_voc7j")])
-next_node_id = 72
+next_node_id = 73

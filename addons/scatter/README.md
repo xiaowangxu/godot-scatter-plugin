@@ -38,12 +38,12 @@ External addons register a model, GraphNode view, and editor extension together:
 
 ```gdscript
 func _enter_tree() -> void:
-    ScatterValueTypeRegistry.register_type(&"my_value", [&"value"], Color.CORNFLOWER_BLUE)
-    ScatterExtensionRegistry.register_node(MyNode, MyNodeView, MyNodeEditorExtension)
+	ScatterValueTypeRegistry.register_type(&"my_value", [&"value"], Color.CORNFLOWER_BLUE)
+	ScatterExtensionRegistry.register_node(MyNode, MyNodeView, MyNodeEditorExtension)
 
 func _exit_tree() -> void:
-    ScatterExtensionRegistry.unregister_node(&"my_node")
-    ScatterValueTypeRegistry.unregister_type(&"my_value")
+	ScatterExtensionRegistry.unregister_node(&"my_node")
+	ScatterValueTypeRegistry.unregister_type(&"my_value")
 ```
 
 `ScatterGraphCompiler` validates ports, subtype assignment, variadic order, the unique Final Output, and cycles before producing a stable topological plan. Each node evaluates once per Build and may return multiple named outputs through `ScatterNodeOutputs`. Structured warnings allow partial output; errors prevent MultiMesh writes.

@@ -16,6 +16,9 @@ func _ready() -> void:
 	_recipes.name = "Recipes"
 	_recipes.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_recipes.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	# Match Godot's editor file sidebars: the secondary variation paints the
+	# empty list area with the editor panel background while following its theme.
+	_recipes.theme_type_variation = &"ItemListSecondary"
 	_recipes.select_mode = ItemList.SELECT_SINGLE
 	_recipes.allow_reselect = true
 	_recipes.item_selected.connect(_item_selected)
@@ -28,6 +31,7 @@ func sync_sessions(sessions: Dictionary, active_key: String) -> void:
 	_syncing = true
 	_recipes.clear()
 	var keys: Array = sessions.keys()
+	var recipe_icon: Texture2D = EditorInterface.get_editor_theme().get_icon(&"File", &"EditorIcons")
 	keys.sort_custom(func(a: String, b: String) -> bool:
 		var session_a := sessions.get(a) as ScatterRecipeEditSession
 		var session_b := sessions.get(b) as ScatterRecipeEditSession
@@ -40,8 +44,8 @@ func sync_sessions(sessions: Dictionary, active_key: String) -> void:
 			continue
 		var label := session.display_name()
 		if session.dirty:
-			label += " *"
-		var index := _recipes.add_item(label)
+			label += "(*)"
+		var index := _recipes.add_item(label, recipe_icon)
 		_recipes.set_item_metadata(index, key)
 		_recipes.set_item_tooltip(index, session.recipe_path)
 		if key == active_key:

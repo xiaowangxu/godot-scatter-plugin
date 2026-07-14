@@ -40,7 +40,7 @@ func sync_graph(seed: int, auto_build: bool) -> void:
 
 func set_recipe_dirty(value: bool) -> void:
 	if _save != null:
-		_save.text = (tr("(*) ") if value else "") + tr("Save")
+		_save.text = tr("Save") + (tr("(*) ") if value else "")
 		_save.tooltip_text = (
 			tr("Save unsaved recipe changes to the linked .tres file")
 			if value
@@ -74,7 +74,7 @@ func _build_actions() -> void:
 	#_add_button(row, "Focus", focus_requested.emit)
 	#_add_button(row, "Output", output_requested.emit)
 	_save = _add_button(row, "Save", save_requested.emit, "Save the linked Scatter recipe (Ctrl+S)")
-	_add_button(row, "Load", load_requested.emit)
+	#_add_button(row, "Load", load_requested.emit)
 
 
 func _add_button(parent: Container, caption: String, callback: Callable, tooltip := "") -> Button:
