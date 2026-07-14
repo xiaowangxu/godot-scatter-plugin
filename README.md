@@ -187,9 +187,6 @@ Selecting a Path node exposes **Edit Points**, **Add Points**, **Delete Points**
 
 Selecting a Paint Region node exposes Paint, Erase, Radius, Clear Layer, and Collision Mask controls. Brush strokes are stored in the recipe and support Undo/Redo.
 
-> **Image placeholder — Viewport tools**<br>
-> Add a split image showing Path point editing and Paint Region brush editing in the 3D viewport.
-
 ## Value and coordinate model
 
 Ports are strongly typed. Compatibility is defined by a multiple-parent type registry:
