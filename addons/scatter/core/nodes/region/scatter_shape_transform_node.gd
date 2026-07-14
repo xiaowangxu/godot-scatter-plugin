@@ -128,8 +128,6 @@ func _geometry_port() -> ScatterPort:
 
 func _type_label() -> String:
 	match geometry_type:
-		ScatterValueTypeRegistry.SHAPE:
-			return "Shape"
 		ScatterValueTypeRegistry.REGION:
 			return "Region"
 		ScatterValueTypeRegistry.REGULAR_REGION:
@@ -137,7 +135,7 @@ func _type_label() -> String:
 		ScatterValueTypeRegistry.PATH:
 			return "Path"
 		_:
-			return "Shape / Path"
+			return "Shape"
 
 
 func _empty_value() -> ScatterValue:

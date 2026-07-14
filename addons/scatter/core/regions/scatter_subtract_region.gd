@@ -4,11 +4,21 @@ extends ScatterRegionValue
 
 var a: ScatterShapeValue
 var b: ScatterShapeValue
+var pivot_mode: int
 
 
-func _init(p_a: ScatterShapeValue = null, p_b: ScatterShapeValue = null) -> void:
+func _init(
+		p_a: ScatterShapeValue = null,
+		p_b: ScatterShapeValue = null,
+		p_pivot_mode := ScatterRegionValue.BooleanPivot.FROM_A,
+) -> void:
 	a = p_a if p_a != null else ScatterEmptyRegion.new()
 	b = p_b if p_b != null else ScatterEmptyRegion.new()
+	pivot_mode = p_pivot_mode
+
+
+func get_local_transform() -> Transform3D:
+	return ScatterRegionValue.resolve_boolean_pivot(pivot_mode, a, b, get_bounds_local())
 
 
 func get_bounds_local() -> AABB:
@@ -21,10 +31,6 @@ func contains_local(point: Vector3) -> bool:
 
 func is_empty() -> bool:
 	return a.is_empty()
-
-
-func contains_exclusion(point: Vector3) -> bool:
-	return b.contains_local(point) or (a is ScatterRegionValue and (a as ScatterRegionValue).contains_exclusion(point))
 
 
 func get_edges() -> Array[ScatterEdge]:

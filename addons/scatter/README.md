@@ -19,16 +19,16 @@ Ports use stable `StringName` value types and a multiple-parent type registry:
 ```text
 value
 ├── shape
-│   └── region
-│       └── regular_region
-├── path
+│   ├── region
+│   │   └── regular_region
+│   └── path
 ├── direct_sampleable
 │   ├── regular_region
 │   └── path
 └── instances
 ```
 
-Paths are one-dimensional arc-length curves. Path Tube Region converts a Path to a volume Shape. Shape Transform has one bidirectional adaptive geometry flow: connecting either side resolves both ports to the most precise Shape, Region, Regular Region, or Path type, and incompatible connections are removed in the same UndoRedo action. It applies composable MultiMesh-local position, rotation, and scale without degrading that resolved type. Boolean operators accept Shape and return Shape, so their Random sampling uses deterministic rejection sampling over the combined local AABB. Regular Box and Sphere regions use exact direct sampling. Poisson uses deterministic 3D Bridson sampling.
+Paths are one-dimensional arc-length Shapes and also support direct sampling. Path Tube Region converts a Path to a volume Shape. Path transforms use a dedicated `ScatterTransformedPath` wrapper so chained transforms preserve the common Shape frame contract while recomputing arc length after non-uniform scale. Shape Transform has one bidirectional adaptive geometry flow: an unbound port is labeled Shape, while a connected port displays the precise Shape, Region, Regular Region, or Path type. Incompatible connections are removed in the same UndoRedo action. Boolean operators accept Shape and return Shape, so their Random sampling uses deterministic rejection sampling over the combined local AABB. Regular Box and Sphere regions use exact direct sampling. Region Poisson uses deterministic 3D Bridson sampling; Path Poisson samples deterministically along total arc length.
 
 Every stored instance transform is MultiMesh Local. Shape and Path sources may be authored in Global or Local space; Global values are frozen into target-local values during evaluation. Instance space is available only on Instances transform nodes.
 

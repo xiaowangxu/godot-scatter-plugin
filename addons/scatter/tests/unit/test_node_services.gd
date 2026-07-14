@@ -4,7 +4,10 @@ extends SceneTree
 func _init() -> void:
 	_test_types()
 	_test_sampling()
+	_test_boolean_pivots()
 	_test_path_and_poisson()
+	_test_shape_filtering()
+	_test_grid_spaces()
 	_test_spaces()
 	print("Scatter node service test passed")
 	quit()
@@ -15,7 +18,7 @@ func _test_types() -> void:
 	assert(ScatterValueTypeRegistry.is_assignable(ScatterValueTypeRegistry.REGULAR_REGION, ScatterValueTypeRegistry.SHAPE))
 	assert(ScatterValueTypeRegistry.is_assignable(ScatterValueTypeRegistry.REGULAR_REGION, ScatterValueTypeRegistry.DIRECT_SAMPLEABLE))
 	assert(ScatterValueTypeRegistry.is_assignable(ScatterValueTypeRegistry.PATH, ScatterValueTypeRegistry.DIRECT_SAMPLEABLE))
-	assert(not ScatterValueTypeRegistry.is_assignable(ScatterValueTypeRegistry.PATH, ScatterValueTypeRegistry.SHAPE))
+	assert(ScatterValueTypeRegistry.is_assignable(ScatterValueTypeRegistry.PATH, ScatterValueTypeRegistry.SHAPE))
 	assert(ScatterValueTypeRegistry.register_type(&"test_shape", [ScatterValueTypeRegistry.SHAPE], Color.WHITE))
 	assert(ScatterValueTypeRegistry.is_assignable(&"test_shape", ScatterValueTypeRegistry.VALUE))
 	assert(ScatterValueTypeRegistry.unregister_type(&"test_shape"))
@@ -84,12 +87,35 @@ func _test_sampling() -> void:
 	assert(chained_shape.sample_local(0.71).is_equal_approx(chained_mapping * expected_mapping * pivot_box.sample_local(0.71)))
 
 
+func _test_boolean_pivots() -> void:
+	var a := ScatterBoxRegion.new(Vector3(-4, 0, 0), Vector3(2, 2, 2), Vector3(0, 35, 0))
+	var b := ScatterBoxRegion.new(Vector3(6, 0, 0), Vector3(2, 2, 2), Vector3(0, -20, 0))
+	var union := ScatterUnionRegion.new(a, b)
+	assert(union.get_local_transform().basis == Basis.IDENTITY)
+	assert(union.get_local_transform().origin.is_equal_approx(union.get_bounds_local().get_center()))
+	union.pivot_mode = ScatterRegionValue.BooleanPivot.FROM_A
+	assert(union.get_local_transform().is_equal_approx(a.get_local_transform()))
+	union.pivot_mode = ScatterRegionValue.BooleanPivot.FROM_B
+	assert(union.get_local_transform().is_equal_approx(b.get_local_transform()))
+	var intersection := ScatterIntersectionRegion.new(a, b)
+	assert(intersection.get_local_transform().basis == Basis.IDENTITY)
+	assert(intersection.get_local_transform().origin.is_equal_approx(intersection.get_bounds_local().get_center()))
+	var subtract := ScatterSubtractRegion.new(a, b)
+	assert(subtract.get_local_transform().is_equal_approx(a.get_local_transform()))
+	assert(subtract.contains_local(Vector3(-4, 0, 0)))
+
+
 func _test_path_and_poisson() -> void:
 	var path := ScatterPathValue.new(PackedVector3Array([Vector3.ZERO, Vector3(1, 0, 0), Vector3(10, 0, 0)]))
+	assert(path is ScatterShapeValue)
+	assert(path.get_bounds_local().is_equal_approx(AABB(Vector3.ZERO, Vector3(10, 0, 0))))
+	assert(path.contains_local(Vector3(4, 0, 0)))
+	assert(not path.contains_local(Vector3(4, 0.01, 0)))
 	assert(is_equal_approx(path.get_length_local(), 10.0))
 	assert(path.sample_local(0.5).is_equal_approx(Vector3(5, 0, 0)))
 	var path_transform := Transform3D(Basis.from_scale(Vector3(2, 1, 1)), Vector3(3, 0, 0))
 	var transformed_path := path.transformed_local(path_transform)
+	assert(transformed_path.get_script().resource_path.ends_with("scatter_transformed_path.gd"))
 	assert(transformed_path.get_local_transform().is_equal_approx(path_transform))
 	assert(is_equal_approx(transformed_path.get_length_local(), 20.0))
 	assert(transformed_path.sample_local(0.5).is_equal_approx(Vector3(13, 0, 0)))
@@ -107,6 +133,19 @@ func _test_path_and_poisson() -> void:
 	var path_mapping := path_frame * path_delta * path_frame.affine_inverse()
 	assert(output_path.get_local_transform().is_equal_approx(path_frame * path_delta))
 	assert(output_path.sample_local(0.63).is_equal_approx(path_mapping * framed_path.sample_local(0.63)))
+	var random_path_instances := ScatterInstances.new()
+	var path_rng := RandomNumberGenerator.new()
+	path_rng.seed = 19
+	var path_sampling := ScatterCreationOps.append_random(random_path_instances, path, 20, path_rng, 100)
+	assert(path_sampling.generated == 20)
+	for transform in random_path_instances.transforms:
+		assert(path.contains_local(transform.origin))
+	var path_poisson := ScatterInstances.new()
+	ScatterCreationOps.append_poisson(path_poisson, path, 0.75, 15, 8, path_rng, 100)
+	for index in path_poisson.transforms.size():
+		assert(path.contains_local(path_poisson.transforms[index].origin))
+		for other in range(index + 1, path_poisson.transforms.size()):
+			assert(path_poisson.transforms[index].origin.distance_to(path_poisson.transforms[other].origin) >= 0.749)
 	var poisson := ScatterInstances.new()
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 7
@@ -114,6 +153,73 @@ func _test_path_and_poisson() -> void:
 	for index in poisson.transforms.size():
 		for other in range(index + 1, poisson.transforms.size()):
 			assert(poisson.transforms[index].origin.distance_to(poisson.transforms[other].origin) >= 0.999)
+
+
+func _test_shape_filtering() -> void:
+	var outer := ScatterBoxRegion.new(Vector3.ZERO, Vector3(10, 10, 10))
+	var cutout := ScatterBoxRegion.new(Vector3.ZERO, Vector3(2, 2, 2))
+	var shape := ScatterSubtractRegion.new(outer, cutout)
+	var instances := ScatterInstances.new()
+	instances.add_instance(Transform3D(Basis(), Vector3.ZERO))
+	instances.add_instance(Transform3D(Basis(), Vector3(4, 0, 0)))
+	instances.add_instance(Transform3D(Basis(), Vector3(8, 0, 0)))
+	ScatterFilterOps.remove_outside(instances, shape)
+	assert(instances.transforms.size() == 1)
+	assert(instances.transforms[0].origin == Vector3(4, 0, 0))
+
+
+func _test_grid_spaces() -> void:
+	var shape := ScatterBoxRegion.new(Vector3.ZERO, Vector3(4, 4, 4))
+	var local_grid := ScatterInstances.new()
+	ScatterCreationOps.append_grid(
+		local_grid,
+		shape,
+		Vector3(2, 2, 2),
+		Vector3.ZERO,
+		Transform3D.IDENTITY,
+		100,
+	)
+	assert(local_grid.transforms.size() == 27)
+	assert(local_grid.transforms.any(func(value: Transform3D) -> bool: return value.origin == Vector3.ZERO))
+	var offset_grid := ScatterInstances.new()
+	ScatterCreationOps.append_grid(
+		offset_grid,
+		shape,
+		Vector3(2, 2, 2),
+		Vector3.ONE,
+		Transform3D.IDENTITY,
+		100,
+	)
+	assert(offset_grid.transforms.size() == 8)
+	for transform in offset_grid.transforms:
+		assert(is_equal_approx(absf(transform.origin.x), 1.0))
+		assert(is_equal_approx(absf(transform.origin.y), 1.0))
+		assert(is_equal_approx(absf(transform.origin.z), 1.0))
+	var global_grid := ScatterInstances.new()
+	ScatterCreationOps.append_grid(
+		global_grid,
+		shape,
+		Vector3(2, 2, 2),
+		Vector3.ZERO,
+		Transform3D(Basis(), Vector3(-1, 0, 0)),
+		100,
+	)
+	assert(global_grid.transforms.size() == 18)
+	for transform in global_grid.transforms:
+		assert(is_equal_approx(absf(transform.origin.x), 1.0))
+	var instance_shape := ScatterBoxRegion.new(Vector3(5, 0, 0), Vector3(4, 0.2, 0.2), Vector3(0, 0, 90))
+	var instance_grid := ScatterInstances.new()
+	ScatterCreationOps.append_grid(
+		instance_grid,
+		instance_shape,
+		Vector3(2, 1, 1),
+		Vector3.ZERO,
+		instance_shape.get_local_transform(),
+		100,
+	)
+	assert(instance_grid.transforms.size() == 3)
+	for transform in instance_grid.transforms:
+		assert(is_equal_approx(transform.origin.x, 5.0))
 
 
 func _test_spaces() -> void:

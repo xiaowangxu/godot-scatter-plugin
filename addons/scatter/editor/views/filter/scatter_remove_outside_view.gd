@@ -9,4 +9,4 @@ func _build_ports() -> void:
 
 
 func _build_properties() -> void:
-	add_bool_property(&"negative_shapes_only", "Negative Shapes Only")
+	pass

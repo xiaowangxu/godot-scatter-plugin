@@ -104,7 +104,7 @@ func _init() -> void:
 	var isolated_payload := adaptive_clipboard.instantiate(clipboard_graph, Vector2(200, 200))
 	var isolated_transform := isolated_payload.nodes[0] as ScatterShapeTransformNode
 	assert(isolated_transform.geometry_type == ScatterValueTypeRegistry.DYNAMIC_GEOMETRY)
-	assert(isolated_transform.get_input_ports()[0].label == "Shape / Path")
+	assert(isolated_transform.get_input_ports()[0].label == "Shape")
 	adaptive_clipboard.capture(clipboard_graph, [clipboard_box.node_id, clipboard_transform.node_id])
 	var connected_payload := adaptive_clipboard.instantiate(clipboard_graph, Vector2(400, 200))
 	var connected_transform: ScatterShapeTransformNode

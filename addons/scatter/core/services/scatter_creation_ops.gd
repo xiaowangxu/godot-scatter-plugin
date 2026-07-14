@@ -16,7 +16,11 @@ static func append_random(
 	var attempts := 0
 	if shape == null or shape.is_empty() or requested == 0:
 		return {"requested": requested, "generated": 0, "attempts": attempts}
-	if shape is ScatterRegularRegionValue:
+	if shape is ScatterPathValue:
+		for _index in requested:
+			buffer.add_instance(Transform3D(Basis(), (shape as ScatterPathValue).sample_local(rng.randf())))
+			attempts += 1
+	elif shape is ScatterRegularRegionValue:
 		for _index in requested:
 			buffer.add_instance(Transform3D(Basis(), (shape as ScatterRegularRegionValue).sample_local(rng.randf())))
 			attempts += 1
@@ -34,24 +38,38 @@ static func append_random(
 	return {"requested": amount, "generated": generated, "attempts": attempts}
 
 
-static func append_grid(buffer: ScatterInstances, shape: ScatterShapeValue, spacing: Vector3, maximum: int) -> void:
+static func append_grid(
+		buffer: ScatterInstances,
+		shape: ScatterShapeValue,
+		spacing: Vector3,
+		offset: Vector3,
+		grid_to_local: Transform3D,
+		maximum: int,
+) -> void:
 	if shape == null or shape.is_empty():
 		return
+	if absf(grid_to_local.basis.determinant()) <= 0.000001:
+		return
 	spacing = ScatterMath.positive_vec3(spacing)
-	var bounds: AABB = shape.get_bounds_local()
-	var x := bounds.position.x
+	var local_to_grid := grid_to_local.affine_inverse()
+	var bounds := ScatterMath.transformed_aabb(shape.get_bounds_local(), local_to_grid)
+	var x := _first_grid_coordinate(bounds.position.x, spacing.x, offset.x)
 	while x <= bounds.end.x + 0.0001 and buffer.transforms.size() < maximum:
-		var y := bounds.position.y
+		var y := _first_grid_coordinate(bounds.position.y, spacing.y, offset.y)
 		while y <= bounds.end.y + 0.0001 and buffer.transforms.size() < maximum:
-			var z := bounds.position.z
+			var z := _first_grid_coordinate(bounds.position.z, spacing.z, offset.z)
 			while z <= bounds.end.z + 0.0001 and buffer.transforms.size() < maximum:
-				var point := Vector3(x, y, z)
+				var point := grid_to_local * Vector3(x, y, z)
 				if shape.contains_local(point):
 					buffer.add_instance(Transform3D(Basis(), point))
 				z += spacing.z
 			y += spacing.y
 		x += spacing.x
 	buffer.normalize()
+
+
+static func _first_grid_coordinate(minimum: float, spacing: float, offset: float) -> float:
+	return offset + ceilf((minimum - offset) / spacing - 0.000001) * spacing
 
 
 static func append_poisson(
@@ -68,6 +86,10 @@ static func append_poisson(
 	radius = maxf(radius, 0.001)
 	var target_count := mini(maxi(max_points, 0), maxi(0, maximum - buffer.transforms.size()))
 	if target_count == 0:
+		return
+	if shape is ScatterPathValue:
+		_append_path_poisson(buffer, shape as ScatterPathValue, radius, target_count, rng)
+		buffer.normalize()
 		return
 	var bounds := shape.get_bounds_local()
 	var cell_size := radius / sqrt(3.0)
@@ -140,6 +162,8 @@ static func append_single(buffer: ScatterInstances, offset: Vector3, rotation_de
 
 
 static func _find_initial(shape: ScatterShapeValue, bounds: AABB, rng: RandomNumberGenerator) -> Vector3:
+	if shape is ScatterPathValue:
+		return (shape as ScatterPathValue).sample_local(rng.randf())
 	if shape is ScatterRegularRegionValue:
 		return (shape as ScatterRegularRegionValue).sample_local(rng.randf())
 	for _attempt in 256:
@@ -147,6 +171,32 @@ static func _find_initial(shape: ScatterShapeValue, bounds: AABB, rng: RandomNum
 		if shape.contains_local(point):
 			return point
 	return Vector3.INF
+
+
+static func _append_path_poisson(
+		buffer: ScatterInstances,
+		path: ScatterPathValue,
+		radius: float,
+		target_count: int,
+		rng: RandomNumberGenerator,
+) -> void:
+	if path.get_length_local() <= 0.0:
+		return
+	var points: Array[Vector3] = []
+	var attempts := 0
+	var budget := mini(REJECTION_CAP, maxi(256, target_count * 32))
+	while points.size() < target_count and attempts < budget:
+		var candidate := path.sample_local(rng.randf())
+		attempts += 1
+		var valid := true
+		for point in points:
+			if candidate.distance_squared_to(point) < radius * radius:
+				valid = false
+				break
+		if valid:
+			points.append(candidate)
+	for point in points:
+		buffer.add_instance(Transform3D(Basis(), point))
 
 
 static func _random_in_bounds(bounds: AABB, rng: RandomNumberGenerator) -> Vector3:

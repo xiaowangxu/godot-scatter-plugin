@@ -10,4 +10,9 @@ func _build_ports() -> void:
 
 
 func _build_properties() -> void:
-	pass
+	add_enum_property(
+		&"pivot",
+		"Pivot",
+		PackedStringArray(["From A", "From B", "Bounds Center"]),
+		"Defines the result's local reference frame without changing its geometry.",
+	)

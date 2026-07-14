@@ -45,6 +45,23 @@ static func aabb_intersection(a: AABB, b: AABB) -> AABB:
 	return AABB(start, finish - start)
 
 
+static func transformed_aabb(bounds: AABB, transform: Transform3D) -> AABB:
+	var corners := [
+		bounds.position,
+		bounds.position + Vector3(bounds.size.x, 0, 0),
+		bounds.position + Vector3(0, bounds.size.y, 0),
+		bounds.position + Vector3(0, 0, bounds.size.z),
+		bounds.position + Vector3(bounds.size.x, bounds.size.y, 0),
+		bounds.position + Vector3(bounds.size.x, 0, bounds.size.z),
+		bounds.position + Vector3(0, bounds.size.y, bounds.size.z),
+		bounds.end,
+	]
+	var result := AABB(transform * corners[0], Vector3.ZERO)
+	for index in range(1, corners.size()):
+		result = result.expand(transform * corners[index])
+	return result
+
+
 static func distance_to_segment(point: Vector3, a: Vector3, b: Vector3) -> float:
 	var ab := b - a
 	if ab.length_squared() < 0.000001:

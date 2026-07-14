@@ -1,6 +1,8 @@
 @tool
 class_name ScatterPathValue
-extends ScatterValue
+extends ScatterShapeValue
+
+const CONTAIN_EPSILON := 0.0001
 
 var _points: PackedVector3Array
 var _closed := false
@@ -28,14 +30,6 @@ func get_local_transform() -> Transform3D:
 	return _local_transform
 
 
-func shape_to_local(point: Vector3) -> Vector3:
-	return _local_transform * point
-
-
-func local_to_shape(point: Vector3) -> Vector3:
-	return _local_transform.affine_inverse() * point
-
-
 func get_points_local() -> PackedVector3Array:
 	var result := PackedVector3Array()
 	for point in _points:
@@ -44,7 +38,34 @@ func get_points_local() -> PackedVector3Array:
 
 
 func transformed_local(transform: Transform3D) -> ScatterPathValue:
-	return ScatterPathValue.new(_points, _closed, transform * _local_transform)
+	# Load by path to avoid a compile-time cycle: ScatterTransformedPath derives
+	# from this class while this virtual constructor creates that wrapper.
+	var transformed_script := load("res://addons/scatter/core/values/scatter_transformed_path.gd") as Script
+	return transformed_script.new(self, transform) as ScatterPathValue
+
+
+func get_bounds_local() -> AABB:
+	if _points.is_empty():
+		return AABB()
+	var bounds := AABB(shape_to_local(_points[0]), Vector3.ZERO)
+	for index in range(1, _points.size()):
+		bounds = bounds.expand(shape_to_local(_points[index]))
+	return bounds
+
+
+func contains_local(point: Vector3) -> bool:
+	if _points.is_empty():
+		return false
+	if _points.size() == 1:
+		return point.distance_squared_to(shape_to_local(_points[0])) <= CONTAIN_EPSILON * CONTAIN_EPSILON
+	var segment_count := _points.size() if _closed else _points.size() - 1
+	for segment in segment_count:
+		var start := shape_to_local(_points[segment])
+		var end := _local_segment_end(segment)
+		var closest := Geometry3D.get_closest_point_to_segment(point, start, end)
+		if point.distance_squared_to(closest) <= CONTAIN_EPSILON * CONTAIN_EPSILON:
+			return true
+	return false
 
 
 func is_closed() -> bool:

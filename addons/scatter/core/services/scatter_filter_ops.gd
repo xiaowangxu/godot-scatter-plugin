@@ -5,20 +5,14 @@ extends RefCounted
 
 static func remove_outside(
 		buffer: ScatterInstances,
-		region: ScatterShapeValue,
-		negative_shapes_only: bool,
+		shape: ScatterShapeValue,
 ) -> void:
-	if region == null:
+	if shape == null:
 		return
 	buffer.normalize()
 	for index in range(buffer.transforms.size() - 1, -1, -1):
 		var point := buffer.transforms[index].origin
-		var should_remove: bool
-		if negative_shapes_only and region is ScatterRegionValue:
-			should_remove = (region as ScatterRegionValue).contains_exclusion(point)
-		else:
-			should_remove = not region.contains_local(point)
-		if should_remove:
+		if not shape.contains_local(point):
 			buffer.remove_at(index)
 
 

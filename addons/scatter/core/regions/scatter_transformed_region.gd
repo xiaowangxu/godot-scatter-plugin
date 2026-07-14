@@ -41,10 +41,6 @@ func contains_local(point: Vector3) -> bool:
 	return source.contains_local(source_from_local * point)
 
 
-func contains_exclusion(point: Vector3) -> bool:
-	return source.contains_exclusion(source_from_local * point)
-
-
 func get_edges() -> Array[ScatterEdge]:
 	var result: Array[ScatterEdge] = []
 	for edge in source.get_edges():

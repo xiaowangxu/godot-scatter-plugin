@@ -27,7 +27,7 @@ static func ensure_builtins() -> void:
 	_register_raw(REGION, [SHAPE], Color("55b8a6"))
 	_register_raw(DIRECT_SAMPLEABLE, [VALUE], Color("62c6bb"))
 	_register_raw(REGULAR_REGION, [REGION, DIRECT_SAMPLEABLE], Color("55b8a6"))
-	_register_raw(PATH, [VALUE, DIRECT_SAMPLEABLE], Color("63a7dc"))
+	_register_raw(PATH, [SHAPE, DIRECT_SAMPLEABLE], Color("63a7dc"))
 	_register_raw(INSTANCES, [VALUE], Color("b889e8"))
 	# Session-visible wildcard used by adaptive geometry ports. It must never
 	# survive as the resolved type of a connected core graph port.

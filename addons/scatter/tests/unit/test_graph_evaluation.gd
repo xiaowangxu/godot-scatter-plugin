@@ -99,14 +99,14 @@ func _init() -> void:
 	assert(adaptive_graph.connect_nodes(adaptive_path.node_id, &"path", adaptive_transform.node_id, &"geometry") != null)
 	assert(adaptive_transform.geometry_type == ScatterValueTypeRegistry.PATH)
 	assert(adaptive_graph.connect_nodes(adaptive_transform.node_id, &"geometry", adaptive_along_path.node_id, &"path") != null)
-	# Connecting the output to a Shape consumer changes the adaptive type and
-	# removes both the incompatible Path input and Path output connection.
+	# Path is also a Shape, so a Shape consumer must preserve the more precise
+	# Path type and all existing Path connections.
 	assert(adaptive_graph.connect_nodes(adaptive_transform.node_id, &"geometry", adaptive_random.node_id, &"shape") != null)
-	assert(adaptive_transform.geometry_type == ScatterValueTypeRegistry.SHAPE)
-	assert(adaptive_graph.incoming_connections(adaptive_transform.node_id, &"geometry").is_empty())
-	assert(adaptive_graph.outgoing_connections(adaptive_transform.node_id).size() == 1)
+	assert(adaptive_transform.geometry_type == ScatterValueTypeRegistry.PATH)
+	assert(adaptive_graph.incoming_connections(adaptive_transform.node_id, &"geometry").size() == 1)
+	assert(adaptive_graph.outgoing_connections(adaptive_transform.node_id).size() == 2)
 	assert(adaptive_graph.disconnect_nodes(adaptive_transform.node_id, &"geometry", adaptive_random.node_id, &"shape") != null)
-	assert(adaptive_transform.geometry_type == ScatterValueTypeRegistry.DYNAMIC_GEOMETRY)
+	assert(adaptive_transform.geometry_type == ScatterValueTypeRegistry.PATH)
 	target.free()
 	print("Scatter graph evaluation test passed")
 	quit()

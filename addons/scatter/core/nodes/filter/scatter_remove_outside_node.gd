@@ -2,8 +2,6 @@
 class_name ScatterRemoveOutsideNode
 extends ScatterPlacementNode
 
-@export var negative_shapes_only := false
-
 
 func get_type_id() -> StringName:
 	return &"remove_outside"
@@ -30,5 +28,5 @@ func get_input_ports() -> Array[ScatterPort]:
 
 func evaluate_value(context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterValue:
 	var buffer := input_instances(context, inputs)
-	ScatterFilterOps.remove_outside(buffer, inputs.shape(), negative_shapes_only)
+	ScatterFilterOps.remove_outside(buffer, inputs.shape())
 	return buffer

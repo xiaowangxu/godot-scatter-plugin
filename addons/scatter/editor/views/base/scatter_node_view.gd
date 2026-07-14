@@ -277,6 +277,7 @@ func _add_vector_property(
 	for axis in count:
 		var control := SpinBox.new()
 		control.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		control.custom_minimum_size.x = 150
 		control.min_value = -1000000.0
 		control.max_value = 1000000.0
 		control.step = 0.05
