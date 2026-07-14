@@ -21,6 +21,7 @@ func _enter_tree() -> void:
 	_bottom_button = add_control_to_bottom_panel(_panel, tr("Scatter"))
 	_panel.build_requested.connect(_build_current)
 	_panel.recipe_changed.connect(_recipe_changed)
+	_panel.recipe_link_changed.connect(_recipe_link_changed)
 	_panel.target_requested.connect(_open_target)
 	_panel.viewport_tool_changed.connect(_viewport_tool_changed)
 	scene_closed.connect(_scene_closed)
@@ -62,9 +63,12 @@ func _handles(object: Object) -> bool:
 
 func _edit(object: Object) -> void:
 	if object is MultiMeshInstance3D:
+		var target_changed := _target != object
 		_target = object
 		_panel.set_target(_target)
 		_viewport_tools.set_target(_target)
+		if target_changed and _gizmo != null:
+			_gizmo.refresh_target(_target, true)
 	else:
 		_target = null
 		_panel.set_target(null)
@@ -197,6 +201,8 @@ func _refresh_after_metadata_change(target: MultiMeshInstance3D) -> void:
 		_panel.set_target(null)
 		_panel.set_target(target)
 	target.notify_property_list_changed()
+	if _gizmo != null:
+		_gizmo.refresh_target(target, true)
 	_mark_scene_changed(false)
 
 
@@ -221,3 +227,8 @@ func _recipe_changed() -> void:
 	if is_instance_valid(_target):
 		_target.notify_property_list_changed()
 		_target.update_gizmos()
+
+
+func _recipe_link_changed(target: MultiMeshInstance3D) -> void:
+	if _gizmo != null:
+		_gizmo.refresh_target(target, true)

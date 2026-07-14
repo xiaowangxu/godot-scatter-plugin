@@ -1,0 +1,69 @@
+[gd_resource type="Resource" script_class="ScatterGraph" format=3 uid="uid://b3o5wjbubefs8"]
+
+[ext_resource type="Script" uid="uid://dy5xdenyow6vo" path="res://addons/scatter/core/graph/scatter_connection.gd" id="1_uujxr"]
+[ext_resource type="Script" uid="uid://dsmt0b3gpkxpu" path="res://addons/scatter/core/nodes/base/scatter_node.gd" id="2_lg8e0"]
+[ext_resource type="Script" uid="uid://d3ghbysrqhgh0" path="res://addons/scatter/core/nodes/region/scatter_box_node.gd" id="3_0muif"]
+[ext_resource type="Script" uid="uid://bs884ekkdef28" path="res://addons/scatter/core/nodes/placement/scatter_random_node.gd" id="4_c0wcx"]
+[ext_resource type="Script" uid="uid://de8g215t5ilq7" path="res://addons/scatter/core/nodes/transform/scatter_random_rotation_node.gd" id="5_thujc"]
+[ext_resource type="Script" uid="uid://b0r6iuq0u3mqs" path="res://addons/scatter/core/nodes/transform/scatter_scale_node.gd" id="6_xt4l8"]
+[ext_resource type="Script" uid="uid://baijd8v2v6uoh" path="res://addons/scatter/core/nodes/output/scatter_final_output_node.gd" id="7_5w1ie"]
+[ext_resource type="Script" uid="uid://bitupconrfvlx" path="res://addons/scatter/core/graph/scatter_graph.gd" id="8_k2g6d"]
+
+[sub_resource type="Resource" id="Resource_uujxr"]
+script = ExtResource("1_uujxr")
+from_node_id = 1
+from_port_id = &"region"
+to_node_id = 2
+to_port_id = &"shape"
+
+[sub_resource type="Resource" id="Resource_lg8e0"]
+script = ExtResource("1_uujxr")
+from_node_id = 2
+from_port_id = &"instances"
+to_node_id = 3
+to_port_id = &"instances"
+
+[sub_resource type="Resource" id="Resource_0muif"]
+script = ExtResource("1_uujxr")
+from_node_id = 3
+from_port_id = &"instances"
+to_node_id = 4
+to_port_id = &"instances"
+
+[sub_resource type="Resource" id="Resource_c0wcx"]
+script = ExtResource("1_uujxr")
+from_node_id = 4
+from_port_id = &"instances"
+to_node_id = 5
+to_port_id = &"instances"
+
+[sub_resource type="Resource" id="Resource_8ecbt"]
+script = ExtResource("3_0muif")
+node_id = 1
+graph_position = Vector2(-1040, 160)
+
+[sub_resource type="Resource" id="Resource_vyj01"]
+script = ExtResource("4_c0wcx")
+node_id = 2
+graph_position = Vector2(-280, 460)
+
+[sub_resource type="Resource" id="Resource_cuc7n"]
+script = ExtResource("5_thujc")
+node_id = 3
+graph_position = Vector2(140, 220)
+
+[sub_resource type="Resource" id="Resource_b21t7"]
+script = ExtResource("6_xt4l8")
+node_id = 4
+graph_position = Vector2(860, 220)
+
+[sub_resource type="Resource" id="Resource_7lqt7"]
+script = ExtResource("7_5w1ie")
+node_id = 5
+graph_position = Vector2(1520, 220)
+
+[resource]
+script = ExtResource("8_k2g6d")
+nodes = Array[ExtResource("2_lg8e0")]([SubResource("Resource_8ecbt"), SubResource("Resource_vyj01"), SubResource("Resource_cuc7n"), SubResource("Resource_b21t7"), SubResource("Resource_7lqt7")])
+connections = Array[ExtResource("1_uujxr")]([SubResource("Resource_uujxr"), SubResource("Resource_lg8e0"), SubResource("Resource_0muif"), SubResource("Resource_c0wcx")])
+next_node_id = 6

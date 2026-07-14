@@ -30,18 +30,26 @@ func configure(p_undo_redo: EditorUndoRedoManager, p_changed: Callable, p_graph_
 
 func set_active_node(target: MultiMeshInstance3D, node_id: int) -> void:
 	var previous := instance_from_id(_active_target_id) as MultiMeshInstance3D
-	if _extension != null and _context != null:
-		_extension.on_deselected(_context)
 	_active_target_id = target.get_instance_id() if is_instance_valid(target) else 0
 	_active_node_id = node_id
-	_context = _make_context(target, node_id)
-	_extension = ScatterExtensionRegistry.create_editor_extension(_context.node.get_type_id()) if _context != null else null
-	if _extension != null:
-		_extension.on_selected(_context)
+	_rebind_active_context(target)
 	if is_instance_valid(previous):
 		previous.update_gizmos()
 	if is_instance_valid(target):
 		target.update_gizmos()
+
+
+func refresh_target(target: MultiMeshInstance3D, recreate_gizmos := false) -> void:
+	if not is_instance_valid(target):
+		return
+	if target.get_instance_id() == _active_target_id:
+		_rebind_active_context(target)
+	if recreate_gizmos:
+		# Node3D remembers that gizmos were requested even when no plugin accepted
+		# the request. This happens when a selected target gains its first recipe:
+		# update_gizmos() alone will then never ask Scatter to create a gizmo.
+		target.clear_gizmos()
+	target.update_gizmos()
 
 
 func set_active_path(target: MultiMeshInstance3D, node_id: int) -> void:
@@ -73,8 +81,10 @@ func _redraw(gizmo: EditorNode3DGizmo) -> void:
 	var target := gizmo.get_node_3d() as MultiMeshInstance3D
 	if not is_instance_valid(target):
 		return
-	if target.get_instance_id() == _active_target_id and _extension != null and _context != null:
-		_extension.draw_gizmo(_context, ScatterGizmoSink.new(gizmo, self))
+	if target.get_instance_id() == _active_target_id:
+		_ensure_active_context(target)
+		if _extension != null and _context != null:
+			_extension.draw_gizmo(_context, ScatterGizmoSink.new(gizmo, self))
 	var preview: Dictionary = _brush_previews.get(target.get_instance_id(), {})
 	if not preview.is_empty():
 		var lines := ScatterBrushGeometry.circle(preview.position, preview.normal, preview.radius, true)
@@ -107,6 +117,31 @@ func _make_context(target: MultiMeshInstance3D, node_id: int) -> ScatterNodeEdit
 	var context := ScatterNodeEditorContext.create(target, graph, node, _undo_redo)
 	context.changed = _changed
 	return context
+
+
+func _ensure_active_context(target: MultiMeshInstance3D) -> void:
+	var graph := _graph_for_target(target)
+	var node := graph.find_node(_active_node_id) if graph != null else null
+	if (
+		_context == null
+		or _context.target != target
+		or _context.graph != graph
+		or _context.node != node
+	):
+		_rebind_active_context(target)
+
+
+func _rebind_active_context(target: MultiMeshInstance3D) -> void:
+	if _extension != null and _context != null:
+		_extension.on_deselected(_context)
+	_context = _make_context(target, _active_node_id)
+	_extension = (
+		ScatterExtensionRegistry.create_editor_extension(_context.node.get_type_id())
+		if _context != null
+		else null
+	)
+	if _extension != null:
+		_extension.on_selected(_context)
 
 
 func _graph_for_target(target: MultiMeshInstance3D) -> ScatterGraph:

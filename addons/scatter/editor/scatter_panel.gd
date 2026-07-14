@@ -4,6 +4,7 @@ extends VBoxContainer
 
 signal build_requested
 signal recipe_changed
+signal recipe_link_changed(target: MultiMeshInstance3D)
 signal target_requested(target: MultiMeshInstance3D)
 signal viewport_tool_changed(tool_id: StringName, node_id: int)
 signal paint_settings_changed(collision_mask: int, erase: bool, radius: float, can_clear: bool)
@@ -395,6 +396,7 @@ func _set_graph_on_target(owner: MultiMeshInstance3D, value: ScatterGraph) -> vo
 		ScatterGraphAttachment.detach(owner)
 		if target == owner:
 			_bind_target()
+		recipe_link_changed.emit(owner)
 		return
 	if not ScatterGraphAttachment.attach(owner, value):
 		update_status(tr("Could not link the selected Scatter recipe."))
@@ -404,6 +406,7 @@ func _set_graph_on_target(owner: MultiMeshInstance3D, value: ScatterGraph) -> vo
 		_edit_session = null
 		_bind_target()
 		recipe_changed.emit()
+	recipe_link_changed.emit(owner)
 
 
 func _on_recipe_changed() -> void:
