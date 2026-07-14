@@ -21,7 +21,9 @@ func _enter_tree() -> void:
 	_bottom_button = add_control_to_bottom_panel(_panel, tr("Scatter"))
 	_panel.build_requested.connect(_build_current)
 	_panel.recipe_changed.connect(_recipe_changed)
+	_panel.target_requested.connect(_open_target)
 	_panel.viewport_tool_changed.connect(_viewport_tool_changed)
+	scene_closed.connect(_scene_closed)
 	_inspector = InspectorScript.new()
 	_inspector.open_requested.connect(_open_target)
 	_inspector.rebuild_requested.connect(_build_target)
@@ -92,6 +94,13 @@ func _configure_target(target: MultiMeshInstance3D) -> void:
 func _load_target_recipe(target: MultiMeshInstance3D) -> void:
 	_open_target(target)
 	_panel.load_recipe()
+
+
+func _scene_closed(filepath: String) -> void:
+	if _panel != null and _panel.close_scene_sessions(filepath):
+		_target = null
+		if _viewport_tools != null:
+			_viewport_tools.set_target(null)
 
 
 func _build_current() -> void:

@@ -54,8 +54,12 @@ func _init() -> void:
 	assert(panel.graph.nodes.size() == graph.nodes.size())
 	graph = panel.graph
 	assert(graph.connections[0].order == 0)
-	assert(panel.get_node("RecipeGraph") is ScatterGraphEditor)
-	var graph_editor := panel.get_node("RecipeGraph") as ScatterGraphEditor
+	assert(panel.get_node("WorkArea/RecipeSidebar") is ScatterRecipeSidebar)
+	var sidebar := panel.get_node("WorkArea/RecipeSidebar") as ScatterRecipeSidebar
+	assert(sidebar.recipe_count() == 1)
+	assert(not sidebar.recipe_label(0).ends_with("*"))
+	assert(panel.get_node("WorkArea/RecipeGraph") is ScatterGraphEditor)
+	var graph_editor := panel.get_node("WorkArea/RecipeGraph") as ScatterGraphEditor
 	assert(graph_editor.get_connection_list().size() == graph.connections.size())
 	# GraphEdit emits disconnection_request while it is still processing the
 	# mouse press. Rebuilding here would invalidate its port hot-zone lookup and
@@ -171,6 +175,8 @@ func _init() -> void:
 	assert(not paint.get_toolbar().visible)
 	graph.seed = 99173
 	panel._on_recipe_changed()
+	assert(sidebar.recipe_count() == 1)
+	assert(sidebar.recipe_label(0).ends_with("*"))
 	assert(panel.get_graph_for_build(target) == graph)
 	assert(ScatterGraphAttachment.get_graph(target).seed != graph.seed)
 	var reopened_target := MultiMeshInstance3D.new()
@@ -204,10 +210,12 @@ func _init() -> void:
 	assert(loaded != null)
 	assert(loaded.seed == graph.seed)
 	assert(ScatterGraphAttachment.get_graph(target).seed == graph.seed)
+	assert(not sidebar.recipe_label(0).ends_with("*"))
 	assert(loaded.nodes.size() == graph.nodes.size())
 	assert(loaded.connections.size() == graph.connections.size())
 	var loaded_paint := loaded.find_node(paint_node.node_id) as ScatterPaintRegionNode
 	assert(loaded_paint != null and loaded_paint.strokes.size() == 1)
+	await _test_scene_recipe_session_lifecycle(panel)
 	path_tool.get_toolbar().free()
 	paint.get_toolbar().free()
 	panel.queue_free()
@@ -215,3 +223,48 @@ func _init() -> void:
 	ScatterBuiltinRegistry.unregister_all()
 	print("Scatter editor architecture test passed")
 	quit()
+
+
+func _test_scene_recipe_session_lifecycle(panel: ScatterPanel) -> void:
+	var recipe_path := "user://scatter_scene_session_recipe.tres"
+	var scene_path := "user://scatter_scene_session_test.tscn"
+	var saved_graph := ScatterGraphFactory.create_default()
+	saved_graph.seed = 101
+	assert(ScatterRecipeIO.save_graph(saved_graph, recipe_path) == OK)
+	var scene_root := Node3D.new()
+	scene_root.name = "SessionScene"
+	var scene_target := MultiMeshInstance3D.new()
+	scene_target.name = "ScatterTarget"
+	scene_root.add_child(scene_target)
+	scene_target.owner = scene_root
+	assert(ScatterGraphAttachment.attach(scene_target, saved_graph))
+	var packed := PackedScene.new()
+	assert(packed.pack(scene_root) == OK)
+	assert(ResourceSaver.save(packed, scene_path) == OK)
+	scene_root.free()
+
+	var opened_scene := (ResourceLoader.load(
+		scene_path,
+		"PackedScene",
+		ResourceLoader.CACHE_MODE_IGNORE,
+	) as PackedScene).instantiate()
+	root.add_child(opened_scene)
+	var opened_target := opened_scene.get_node("ScatterTarget") as MultiMeshInstance3D
+	panel.set_target(opened_target)
+	assert(panel.graph.seed == 101)
+	panel.graph.seed = 202
+	panel._on_recipe_changed()
+	assert(panel.graph.seed == 202)
+	assert(panel.close_scene_sessions(scene_path))
+	opened_scene.free()
+
+	var reopened_scene := (ResourceLoader.load(
+		scene_path,
+		"PackedScene",
+		ResourceLoader.CACHE_MODE_IGNORE,
+	) as PackedScene).instantiate()
+	root.add_child(reopened_scene)
+	var reopened_target := reopened_scene.get_node("ScatterTarget") as MultiMeshInstance3D
+	panel.set_target(reopened_target)
+	assert(panel.graph.seed == 101)
+	reopened_scene.free()

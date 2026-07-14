@@ -54,7 +54,6 @@ from_node_id = 21
 from_port_id = &"instances"
 to_node_id = 5
 to_port_id = &"instances"
-order = 1
 
 [sub_resource type="Resource" id="Resource_xby7h"]
 script = ExtResource("2")
@@ -70,7 +69,6 @@ from_node_id = 37
 from_port_id = &"instances"
 to_node_id = 19
 to_port_id = &"instances"
-order = 1
 
 [sub_resource type="Resource" id="Resource_rxiw2"]
 script = ExtResource("2")
@@ -78,7 +76,6 @@ from_node_id = 18
 from_port_id = &"instances"
 to_node_id = 37
 to_port_id = &"instances"
-order = 1
 
 [sub_resource type="Resource" id="Resource_vrpv2"]
 script = ExtResource("2")
@@ -107,7 +104,6 @@ from_node_id = 50
 from_port_id = &"instances"
 to_node_id = 49
 to_port_id = &"instances"
-order = 2
 
 [sub_resource type="Resource" id="Resource_x3ahd"]
 script = ExtResource("2")
@@ -115,7 +111,6 @@ from_node_id = 48
 from_port_id = &"instances"
 to_node_id = 50
 to_port_id = &"instances"
-order = 2
 
 [sub_resource type="Resource" id="Resource_iged6"]
 script = ExtResource("2")
@@ -123,7 +118,6 @@ from_node_id = 41
 from_port_id = &"geometry"
 to_node_id = 36
 to_port_id = &"shape"
-order = 2
 
 [sub_resource type="Resource" id="Resource_7i80s"]
 script = ExtResource("2")
@@ -131,7 +125,6 @@ from_node_id = 52
 from_port_id = &"path"
 to_node_id = 46
 to_port_id = &"path"
-order = 2
 
 [sub_resource type="Resource" id="Resource_3xf6u"]
 script = ExtResource("2")
@@ -146,7 +139,6 @@ from_node_id = 55
 from_port_id = &"shape"
 to_node_id = 34
 to_port_id = &"b"
-order = 2
 
 [sub_resource type="Resource" id="Resource_qm454"]
 script = ExtResource("2")
@@ -154,7 +146,6 @@ from_node_id = 55
 from_port_id = &"shape"
 to_node_id = 53
 to_port_id = &"geometry"
-order = 3
 
 [sub_resource type="Resource" id="Resource_6yy5d"]
 script = ExtResource("2")
@@ -162,7 +153,6 @@ from_node_id = 15
 from_port_id = &"path"
 to_node_id = 40
 to_port_id = &"geometry"
-order = 3
 
 [sub_resource type="Resource" id="Resource_qcx7n"]
 script = ExtResource("2")
@@ -170,7 +160,6 @@ from_node_id = 40
 from_port_id = &"geometry"
 to_node_id = 20
 to_port_id = &"path"
-order = 3
 
 [sub_resource type="Resource" id="Resource_piovh"]
 script = ExtResource("2")
@@ -185,7 +174,6 @@ from_node_id = 22
 from_port_id = &"region"
 to_node_id = 33
 to_port_id = &"shape"
-order = 3
 
 [sub_resource type="Resource" id="Resource_dl86w"]
 script = ExtResource("2")
@@ -207,7 +195,6 @@ from_node_id = 1
 from_port_id = &"region"
 to_node_id = 34
 to_port_id = &"a"
-order = 2
 
 [sub_resource type="Resource" id="Resource_meryo"]
 script = ExtResource("2")
@@ -231,7 +218,6 @@ from_node_id = 61
 from_port_id = &"path"
 to_node_id = 62
 to_port_id = &"path"
-order = 3
 
 [sub_resource type="Resource" id="Resource_04ml6"]
 script = ExtResource("2")
@@ -254,7 +240,6 @@ from_node_id = 62
 from_port_id = &"region"
 to_node_id = 70
 to_port_id = &"geometry"
-order = 4
 
 [sub_resource type="Resource" id="Resource_edrxp"]
 script = ExtResource("2")
@@ -379,9 +364,6 @@ graph_position = Vector2(1240, -880)
 
 [sub_resource type="Resource" id="Resource_axao0"]
 script = ExtResource("15_7r0qy")
-position = Vector3(0, 10, 0)
-rotation = Vector3(0, 60, 0)
-scale = Vector3(2, 1, 1)
 geometry_type = &"shape"
 node_id = 41
 graph_position = Vector2(1240, -400)

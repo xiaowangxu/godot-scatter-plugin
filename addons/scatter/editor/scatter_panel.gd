@@ -4,6 +4,7 @@ extends VBoxContainer
 
 signal build_requested
 signal recipe_changed
+signal target_requested(target: MultiMeshInstance3D)
 signal viewport_tool_changed(tool_id: StringName, node_id: int)
 signal paint_settings_changed(collision_mask: int, erase: bool, radius: float, can_clear: bool)
 
@@ -18,14 +19,16 @@ var active_viewport_tool: StringName = &""
 
 var _undo_redo: EditorUndoRedoManager
 var _graph_editor: ScatterGraphEditor
+var _work_area: HSplitContainer
+var _sidebar: ScatterRecipeSidebar
 var _toolbar: ScatterToolbar
 var _status: ScatterStatusBar
 var _save_dialog: FileDialog
 var _load_dialog: FileDialog
 var _updating := false
 var _edit_sessions: Dictionary[String, ScatterRecipeEditSession] = {}
-var _edit_session_contexts: Dictionary[String, WeakRef] = {}
 var _edit_session: ScatterRecipeEditSession
+var _active_session_key := ""
 
 
 func _ready() -> void:
@@ -33,17 +36,32 @@ func _ready() -> void:
 	set_shortcut_context(self)
 	custom_minimum_size = Vector2(0, 350)
 	size_flags_vertical = Control.SIZE_EXPAND_FILL
+	
+	_work_area = HSplitContainer.new()
+	_work_area.name = "WorkArea"
+	_work_area.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	add_child(_work_area)
+	
+	_sidebar = ScatterRecipeSidebar.new()
+	_work_area.add_child(_sidebar)
+	_sidebar.recipe_selected.connect(_sidebar_recipe_selected)
+
+	var view := VBoxContainer.new()
+	_work_area.add_child(view)
+	
 	_toolbar = ScatterToolbar.new()
-	add_child(_toolbar)
+	view.add_child(_toolbar)
 	_connect_toolbar()
 	_graph_editor = ScatterGraphEditor.new()
-	add_child(_graph_editor)
+	_graph_editor.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_graph_editor.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	view.add_child(_graph_editor)
 	_graph_editor.recipe_changed.connect(_on_recipe_changed)
 	_graph_editor.build_requested.connect(func(): build_requested.emit())
 	_graph_editor.viewport_tool_changed.connect(_viewport_selection_changed)
 	_graph_editor.status_changed.connect(update_status)
 	_status = ScatterStatusBar.new()
-	add_child(_status)
+	view.add_child(_status)
 	_status.show_message(tr("Select a MultiMeshInstance3D to edit its Scatter graph."))
 	_build_file_dialogs()
 	if is_instance_valid(target):
@@ -106,6 +124,8 @@ func _bind_target() -> void:
 		_status.set_title(tr("Scatter"))
 		_toolbar.set_editor_enabled(false)
 		_toolbar.set_recipe_dirty(false)
+		_active_session_key = ""
+		_refresh_sidebar()
 		update_status(tr("Select a MultiMeshInstance3D to edit its Scatter graph."))
 		_updating = false
 		return
@@ -117,6 +137,8 @@ func _bind_target() -> void:
 		_graph_editor.clear_target()
 		_toolbar.set_editor_enabled(false)
 		_toolbar.set_recipe_dirty(false)
+		_active_session_key = ""
+		_refresh_sidebar()
 		update_status(tr("Configure or load a Scatter recipe from the Inspector."))
 		_updating = false
 		return
@@ -125,7 +147,7 @@ func _bind_target() -> void:
 	var session_key := _edit_session_key(target, recipe_path)
 	_edit_session = _edit_sessions.get(session_key)
 	if _edit_session == null:
-		_edit_session = ScatterRecipeEditSession.create(attached_graph)
+		_edit_session = ScatterRecipeEditSession.create(attached_graph, target, _edit_context_for(target))
 		if _edit_session == null:
 			_graph_editor.clear_target()
 			_toolbar.set_editor_enabled(false)
@@ -133,11 +155,14 @@ func _bind_target() -> void:
 			_updating = false
 			return
 		_edit_sessions[session_key] = _edit_session
-		_edit_session_contexts[session_key] = weakref(_edit_context_for(target))
+	else:
+		_edit_session.bind_owner(target, _edit_context_for(target))
+	_active_session_key = session_key
 	graph = _edit_session.working_graph
 	_graph_editor.configure(target, graph, _undo_redo)
 	_toolbar.set_editor_enabled(true)
 	_toolbar.set_recipe_dirty(_edit_session.dirty)
+	_refresh_sidebar()
 	_sync_toolbar()
 	update_status()
 	_updating = false
@@ -309,6 +334,7 @@ func _save_recipe() -> void:
 	if error == OK and is_instance_valid(target):
 		ScatterGraphAttachment.attach(target, _edit_session.source_graph)
 		_toolbar.set_recipe_dirty(false)
+	_refresh_sidebar()
 	update_status(
 		tr("Recipe saved to %s") % _edit_session.recipe_path
 		if error == OK
@@ -383,6 +409,7 @@ func _on_recipe_changed() -> void:
 	if _edit_session != null:
 		_edit_session.mark_dirty()
 		_toolbar.set_recipe_dirty(true)
+	_refresh_sidebar()
 	recipe_changed.emit()
 	if is_instance_valid(target):
 		target.update_gizmos()
@@ -422,11 +449,51 @@ func _edit_context_for(owner: MultiMeshInstance3D) -> Node:
 
 
 func _prune_edit_sessions() -> void:
-	for key in _edit_session_contexts.keys():
-		var context_ref: WeakRef = _edit_session_contexts.get(key)
-		if context_ref == null or context_ref.get_ref() == null:
-			_edit_session_contexts.erase(key)
+	for key in _edit_sessions.keys():
+		var session := _edit_sessions.get(key) as ScatterRecipeEditSession
+		if session == null or not session.has_valid_context():
 			_edit_sessions.erase(key)
+			if key == _active_session_key:
+				_active_session_key = ""
+
+
+func close_scene_sessions(scene_path: String) -> bool:
+	var active_closed := false
+	for key in _edit_sessions.keys():
+		var session := _edit_sessions.get(key) as ScatterRecipeEditSession
+		if session != null and session.belongs_to_scene(scene_path):
+			active_closed = active_closed or key == _active_session_key
+			_edit_sessions.erase(key)
+	if active_closed:
+		stop_viewport_editing()
+		target = null
+		graph = null
+		_edit_session = null
+		_active_session_key = ""
+		_graph_editor.clear_target()
+		_toolbar.set_editor_enabled(false)
+		_toolbar.set_recipe_dirty(false)
+		_status.set_title(tr("Scatter"))
+		update_status(tr("Select a MultiMeshInstance3D to edit its Scatter graph."))
+	_refresh_sidebar()
+	return active_closed
+
+
+func _refresh_sidebar() -> void:
+	if _sidebar != null:
+		_sidebar.sync_sessions(_edit_sessions, _active_session_key)
+
+
+func _sidebar_recipe_selected(session_key: String) -> void:
+	var session := _edit_sessions.get(session_key) as ScatterRecipeEditSession
+	if session == null:
+		return
+	var owner := session.get_target()
+	if not is_instance_valid(owner):
+		_edit_sessions.erase(session_key)
+		_refresh_sidebar()
+		return
+	target_requested.emit(owner)
 
 
 func update_status(message := "") -> void:

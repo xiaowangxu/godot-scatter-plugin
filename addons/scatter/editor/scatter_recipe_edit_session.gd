@@ -6,9 +6,16 @@ var recipe_path := ""
 var source_graph: ScatterGraph
 var working_graph: ScatterGraph
 var dirty := false
+var target_ref: WeakRef
+var scene_context_ref: WeakRef
+var scene_path := ""
 
 
-static func create(source: ScatterGraph) -> ScatterRecipeEditSession:
+static func create(
+		source: ScatterGraph,
+		owner: MultiMeshInstance3D = null,
+		context: Node = null,
+) -> ScatterRecipeEditSession:
 	if source == null or source.resource_path.is_empty():
 		return null
 	var session := ScatterRecipeEditSession.new()
@@ -16,7 +23,30 @@ static func create(source: ScatterGraph) -> ScatterRecipeEditSession:
 	session.source_graph = source
 	session.working_graph = source.duplicate_graph()
 	session.working_graph.resource_local_to_scene = true
+	session.bind_owner(owner, context)
 	return session
+
+
+func bind_owner(owner: MultiMeshInstance3D, context: Node) -> void:
+	target_ref = weakref(owner) if is_instance_valid(owner) else null
+	scene_context_ref = weakref(context) if is_instance_valid(context) else null
+	scene_path = context.scene_file_path if is_instance_valid(context) else ""
+
+
+func get_target() -> MultiMeshInstance3D:
+	return target_ref.get_ref() as MultiMeshInstance3D if target_ref != null else null
+
+
+func has_valid_context() -> bool:
+	return scene_context_ref != null and scene_context_ref.get_ref() != null
+
+
+func belongs_to_scene(path: String) -> bool:
+	return not path.is_empty() and scene_path == path
+
+
+func display_name() -> String:
+	return recipe_path.get_file() if not recipe_path.is_empty() else "Untitled Recipe"
 
 
 func mark_dirty() -> void:
