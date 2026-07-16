@@ -2,7 +2,7 @@
 class_name ScatterGraph
 extends Resource
 
-const ConnectionService := preload("res://addons/scatter/core/services/scatter_connection_service.gd")
+const ConnectionService := preload("res://addons/scatter/core/graph/scatter_connection_service.gd")
 
 @export var seed := 0
 @export var auto_rebuild := true

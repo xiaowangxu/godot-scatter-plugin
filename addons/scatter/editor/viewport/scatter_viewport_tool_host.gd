@@ -21,18 +21,16 @@ func configure(
 		panel: ScatterPanel,
 		gizmo: ScatterGizmoPlugin,
 		undo_redo: EditorUndoRedoManager,
-		build_requested: Callable,
-		scene_changed: Callable,
 ) -> void:
 	_plugin = plugin
 	_panel = panel
 	_gizmo = gizmo
 	_paint = ScatterPaintTool.new()
-	_paint.configure(panel, gizmo, undo_redo, build_requested, scene_changed)
+	_paint.configure(panel, gizmo, undo_redo)
 	_paint_toolbar = _paint.get_toolbar()
 	plugin.add_control_to_container(EditorPlugin.CONTAINER_SPATIAL_EDITOR_MENU, _paint_toolbar)
 	_path = ScatterPathTool.new()
-	_path.configure(gizmo, undo_redo, panel._path_data_changed)
+	_path.configure(gizmo, undo_redo, panel.notify_viewport_data_changed)
 	_path_toolbar = _path.get_toolbar()
 	plugin.add_control_to_container(EditorPlugin.CONTAINER_SPATIAL_EDITOR_MENU, _path_toolbar)
 	_activators = {&"paint": _activate_paint, &"path": _activate_path}

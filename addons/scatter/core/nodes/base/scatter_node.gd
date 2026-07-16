@@ -50,14 +50,6 @@ func evaluate_disabled_value(_context: ScatterEvaluationContext, inputs: Scatter
 	return null
 
 
-func prepare_input_context(
-		_port_id: StringName,
-		context: ScatterEvaluationContext,
-		_inputs: ScatterNodeInputs,
-) -> ScatterEvaluationContext:
-	return context
-
-
 func get_color() -> Color:
 	return Color("657383")
 

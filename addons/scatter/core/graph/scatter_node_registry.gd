@@ -3,6 +3,7 @@ class_name ScatterNodeRegistry
 extends RefCounted
 
 static var _node_scripts: Dictionary[StringName, Script] = {}
+static var _prototypes: Dictionary[StringName, ScatterNode] = {}
 
 
 static func register_node(node_script: Script) -> bool:
@@ -15,15 +16,18 @@ static func register_node(node_script: Script) -> bool:
 	if type_id.is_empty() or _node_scripts.has(type_id):
 		return false
 	_node_scripts[type_id] = node_script
+	_prototypes[type_id] = node
 	return true
 
 
 static func unregister_node(type_id: StringName) -> void:
 	_node_scripts.erase(type_id)
+	_prototypes.erase(type_id)
 
 
 static func clear() -> void:
 	_node_scripts.clear()
+	_prototypes.clear()
 
 
 static func create_node(type_id: StringName) -> ScatterNode:
@@ -40,7 +44,7 @@ static func type_ids() -> Array[StringName]:
 static func prototypes() -> Array[ScatterNode]:
 	var result: Array[ScatterNode] = []
 	for type_id in type_ids():
-		var node := create_node(type_id)
+		var node: ScatterNode = _prototypes.get(type_id)
 		if node != null:
 			result.append(node)
 	result.sort_custom(func(a: ScatterNode, b: ScatterNode) -> bool:

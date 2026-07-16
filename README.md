@@ -264,6 +264,7 @@ Open the included [demo scene](addons/scatter/demo/scatter_demo.tscn) to inspect
 Run the automated suite with Godot 4.7+:
 
 ```bash
+godot --headless --path . --editor --quit
 godot --headless --path . --script res://addons/scatter/tests/run_all.gd
 ```
 
@@ -278,3 +279,5 @@ This repository is currently a development project, not a stable release.
 - A `MultiMeshInstance3D` still renders one Mesh per MultiMesh, as defined by Godot.
 
 Bug reports, focused reproduction projects, architecture feedback, and contributions are welcome while the workflow and extension API continue to evolve.
+
+See [Architecture](docs/ARCHITECTURE.md) for the execution pipeline, cache/threading extension boundaries, directory layout, and invariants. Internal preload path changes are listed in [Migration](docs/MIGRATION.md).

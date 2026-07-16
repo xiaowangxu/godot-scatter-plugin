@@ -3,8 +3,8 @@ extends SceneTree
 
 const InspectorScript := preload("res://addons/scatter/editor/inspector/scatter_inspector_plugin.gd")
 const GizmoScript := preload("res://addons/scatter/editor/gizmo/scatter_gizmo_plugin.gd")
-const PaintToolScript := preload("res://addons/scatter/editor/paint/scatter_paint_tool.gd")
-const PathToolScript := preload("res://addons/scatter/editor/paint/scatter_path_tool.gd")
+const PaintToolScript := preload("res://addons/scatter/editor/tools/scatter_paint_tool.gd")
+const PathToolScript := preload("res://addons/scatter/editor/tools/scatter_path_tool.gd")
 
 
 class CallbackCounter:
@@ -30,17 +30,24 @@ func _init() -> void:
 	var recipe_path := "user://scatter_oop_recipe_test.tres"
 	assert(ScatterRecipeIO.save_graph(graph, recipe_path) == OK)
 	assert(ScatterGraphAttachment.attach(target, graph))
+	var link_target := MultiMeshInstance3D.new()
+	var links := ScatterRecipeLinkController.new()
+	var link_changes := [0]
+	links.changed.connect(func(_changed_target: MultiMeshInstance3D): link_changes[0] += 1)
+	links.link(link_target, graph)
+	assert(ScatterGraphAttachment.get_graph(link_target) == graph)
+	links.detach(link_target)
+	assert(ScatterGraphAttachment.get_graph(link_target) == null)
+	assert(link_changes[0] == 2)
+	link_target.free()
 	var counter := CallbackCounter.new()
 	var controller := ScatterGraphController.new()
-	controller.configure(
-		graph,
-		target,
-		null,
-		Callable(),
-		Callable(),
-		counter.graph_changed,
-		counter.build_requested,
-	)
+	var controller_context := ScatterEditorContext.new()
+	controller_context.graph = graph
+	controller_context.target = target
+	controller_context.graph_changed = counter.graph_changed
+	controller_context.build_requested = counter.build_requested
+	controller.configure(controller_context, null)
 	var moved_node := graph.nodes[0]
 	var old_position := moved_node.graph_position
 	controller.move_nodes({moved_node.node_id: {"from": old_position, "to": old_position + Vector2(20, 10)}})
@@ -58,8 +65,8 @@ func _init() -> void:
 	var sidebar := panel.get_node("WorkArea/RecipeSidebar") as ScatterRecipeSidebar
 	assert(sidebar.recipe_count() == 1)
 	assert(not sidebar.recipe_label(0).ends_with("*"))
-	assert(panel.get_node("WorkArea/RecipeGraph") is ScatterGraphEditor)
-	var graph_editor := panel.get_node("WorkArea/RecipeGraph") as ScatterGraphEditor
+	assert(panel.get_node("WorkArea/EditorArea/RecipeGraph") is ScatterGraphEditor)
+	var graph_editor := panel.get_node("WorkArea/EditorArea/RecipeGraph") as ScatterGraphEditor
 	assert(graph_editor.get_connection_list().size() == graph.connections.size())
 	# GraphEdit emits disconnection_request while it is still processing the
 	# mouse press. Rebuilding here would invalidate its port hot-zone lookup and
@@ -142,12 +149,12 @@ func _init() -> void:
 		assert(bottom_padding.custom_minimum_size.y == top_padding.custom_minimum_size.y)
 		view_count += 1
 		view.free()
-	assert(view_count == 36)
+	assert(view_count == 37)
 	assert(InspectorScript != null)
 	assert(GizmoScript != null)
 	var gizmo = null
 	var paint = PaintToolScript.new()
-	paint.configure(panel, gizmo, null, Callable(), Callable())
+	paint.configure(panel, gizmo, null)
 	paint.set_target(target)
 	assert(paint.get_toolbar() != null)
 	var path_tool = PathToolScript.new()
@@ -218,8 +225,13 @@ func _init() -> void:
 	await _test_scene_recipe_session_lifecycle(panel)
 	path_tool.get_toolbar().free()
 	paint.get_toolbar().free()
+	path_tool = null
+	paint = null
+	links = null
 	panel.queue_free()
-	target.free()
+	target.queue_free()
+	await process_frame
+	await process_frame
 	ScatterBuiltinRegistry.unregister_all()
 	print("Scatter editor architecture test passed")
 	quit()

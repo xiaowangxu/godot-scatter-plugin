@@ -1,27 +1,30 @@
 @tool
 extends EditorPlugin
 
-const PanelScript := preload("res://addons/scatter/editor/scatter_panel.gd")
+const PanelScript := preload("res://addons/scatter/editor/ui/scatter_panel.gd")
 const InspectorScript := preload("res://addons/scatter/editor/inspector/scatter_inspector_plugin.gd")
 const GizmoScript := preload("res://addons/scatter/editor/gizmo/scatter_gizmo_plugin.gd")
 const ViewportToolHostScript := preload("res://addons/scatter/editor/viewport/scatter_viewport_tool_host.gd")
 
 var _panel: ScatterPanel
 var _inspector: ScatterInspectorPlugin
-var _bottom_button: Button
 var _target: MultiMeshInstance3D
 var _gizmo: ScatterGizmoPlugin
 var _viewport_tools: ScatterViewportToolHost
+var _build_coordinator: ScatterBuildCoordinator
+var _recipe_links: ScatterRecipeLinkController
 
 
 func _enter_tree() -> void:
 	ScatterBuiltinRegistry.register_all()
+	_recipe_links = ScatterRecipeLinkController.new(get_undo_redo())
+	_recipe_links.changed.connect(_recipe_link_changed)
 	_panel = PanelScript.new()
 	_panel.set_undo_redo(get_undo_redo())
-	_bottom_button = add_control_to_bottom_panel(_panel, tr("Scatter"))
+	_panel.set_recipe_link_controller(_recipe_links)
+	add_control_to_bottom_panel(_panel, tr("Scatter"))
 	_panel.build_requested.connect(_build_current)
 	_panel.recipe_changed.connect(_recipe_changed)
-	_panel.recipe_link_changed.connect(_recipe_link_changed)
 	_panel.target_requested.connect(_open_target)
 	_panel.viewport_tool_changed.connect(_viewport_tool_changed)
 	scene_closed.connect(_scene_closed)
@@ -33,13 +36,20 @@ func _enter_tree() -> void:
 	_inspector.load_requested.connect(_load_target_recipe)
 	add_inspector_plugin(_inspector)
 	_gizmo = GizmoScript.new()
-	_gizmo.configure(get_undo_redo(), _panel._path_data_changed, _panel.get_graph_for_build)
+	_gizmo.configure(get_undo_redo(), _panel.notify_viewport_data_changed, _panel.get_graph_for_build)
 	add_node_3d_gizmo_plugin(_gizmo)
 	_viewport_tools = ViewportToolHostScript.new()
-	_viewport_tools.configure(self, _panel, _gizmo, get_undo_redo(), _build_current, _mark_scene_changed)
+	_viewport_tools.configure(self, _panel, _gizmo, get_undo_redo())
+	_build_coordinator = ScatterBuildCoordinator.new(_panel.get_graph_for_build)
+	_build_coordinator.build_succeeded.connect(_build_succeeded)
+	_build_coordinator.build_failed.connect(_build_failed)
 
 
 func _exit_tree() -> void:
+	if _build_coordinator != null:
+		_build_coordinator.shutdown()
+	_build_coordinator = null
+	_recipe_links = null
 	if _viewport_tools != null:
 		_viewport_tools.shutdown()
 		_viewport_tools = null
@@ -113,30 +123,11 @@ func _build_current() -> void:
 
 
 func _build_target(target: MultiMeshInstance3D, mark_unsaved := true) -> void:
-	var queue: Array[MultiMeshInstance3D] = [target]
-	var visited: Dictionary[int, bool] = {}
-	while not queue.is_empty():
-		var current := queue.pop_front()
-		if not is_instance_valid(current) or visited.has(current.get_instance_id()):
-			continue
-		visited[current.get_instance_id()] = true
-		_build_one(current, mark_unsaved)
-		for dependent in _find_dependents(current):
-			if not visited.has(dependent.get_instance_id()):
-				queue.append(dependent)
+	if _build_coordinator != null:
+		_build_coordinator.build(target, get_editor_interface().get_edited_scene_root(), mark_unsaved)
 
 
-func _build_one(target: MultiMeshInstance3D, mark_unsaved := true) -> void:
-	var graph := _panel.get_graph_for_build(target)
-	if graph == null:
-		return
-	var result := ScatterBuildService.build_target(target, graph, null, ScatterGraphResolver.new(_panel.get_graph_for_build))
-	if not result.ok:
-		if _panel.target == target:
-			_panel.update_status(tr("Build failed: %s") % result.error)
-		push_error("Scatter: %s" % result.error)
-		return
-	ScatterMultiMeshWriter.apply(target, result)
+func _build_succeeded(target: MultiMeshInstance3D, result: ScatterBuildResult, mark_unsaved: bool) -> void:
 	if _panel.target == target:
 		_panel.update_output_counts(result.output_counts)
 		if not result.warnings.is_empty():
@@ -145,65 +136,18 @@ func _build_one(target: MultiMeshInstance3D, mark_unsaved := true) -> void:
 				result.warnings.size(),
 				result.warnings[0].message,
 			])
-	target.update_gizmos()
-	_mark_scene_changed(mark_unsaved)
+	_mark_scene_changed(mark_unsaved, target)
 
 
-func _find_dependents(source: MultiMeshInstance3D) -> Array[MultiMeshInstance3D]:
-	var result: Array[MultiMeshInstance3D] = []
-	var root := get_editor_interface().get_edited_scene_root()
-	if not is_instance_valid(root):
-		return result
-	var candidates: Array[Node] = [root]
-	while not candidates.is_empty():
-		var candidate := candidates.pop_front()
-		candidates.append_array(candidate.get_children())
-		if not candidate is MultiMeshInstance3D:
-			continue
-		var graph := _panel.get_graph_for_build(candidate)
-		if graph == null:
-			continue
-		for node in graph.nodes:
-			if (
-				node is ScatterProxyNode
-				and node.enabled
-				and node.auto_rebuild
-				and candidate.get_node_or_null(node.scatter_node) == source
-			):
-				result.append(candidate)
-				break
-	return result
+func _build_failed(target: MultiMeshInstance3D, result: ScatterBuildResult) -> void:
+	if _panel.target == target:
+		_panel.update_status(tr("Build failed: %s") % result.error)
+	push_error("Scatter: %s" % result.error)
 
 
 func _detach_target(target: MultiMeshInstance3D) -> void:
-	var graph := ScatterGraphAttachment.get_graph(target)
-	if graph == null:
-		return
-	var undo := get_undo_redo()
-	undo.create_action(tr("Detach Scatter Recipe"), UndoRedo.MERGE_DISABLE, target)
-	undo.add_do_method(self, "_detach_graph", target)
-	undo.add_undo_method(self, "_attach_graph", target, graph)
-	undo.add_do_method(self, "_refresh_after_metadata_change", target)
-	undo.add_undo_method(self, "_refresh_after_metadata_change", target)
-	undo.commit_action()
-
-
-func _detach_graph(target: MultiMeshInstance3D) -> void:
-	ScatterGraphAttachment.detach(target)
-
-
-func _attach_graph(target: MultiMeshInstance3D, graph: ScatterGraph) -> void:
-	ScatterGraphAttachment.attach(target, graph)
-
-
-func _refresh_after_metadata_change(target: MultiMeshInstance3D) -> void:
-	if _panel.target == target:
-		_panel.set_target(null)
-		_panel.set_target(target)
-	target.notify_property_list_changed()
-	if _gizmo != null:
-		_gizmo.refresh_target(target, true)
-	_mark_scene_changed(false)
+	if _recipe_links != null:
+		_recipe_links.detach(target, tr("Detach Scatter Recipe"))
 
 
 func _viewport_tool_changed(tool_id: StringName, _node_id: int) -> void:
@@ -215,12 +159,16 @@ func _forward_3d_gui_input(camera: Camera3D, event: InputEvent) -> int:
 	return _viewport_tools.forward_3d_gui_input(camera, event) if _viewport_tools != null else EditorPlugin.AFTER_GUI_INPUT_PASS
 
 
-func _mark_scene_changed(mark_unsaved := true) -> void:
+func _mark_scene_changed(
+		mark_unsaved := true,
+		changed_target: MultiMeshInstance3D = null,
+) -> void:
 	if mark_unsaved and get_editor_interface().has_method("mark_scene_as_unsaved"):
 		get_editor_interface().mark_scene_as_unsaved()
-	if is_instance_valid(_target):
-		_target.notify_property_list_changed()
-		_target.update_gizmos()
+	var target_to_refresh := changed_target if is_instance_valid(changed_target) else _target
+	if is_instance_valid(target_to_refresh):
+		target_to_refresh.notify_property_list_changed()
+		target_to_refresh.update_gizmos()
 
 
 func _recipe_changed() -> void:
@@ -232,3 +180,4 @@ func _recipe_changed() -> void:
 func _recipe_link_changed(target: MultiMeshInstance3D) -> void:
 	if _gizmo != null:
 		_gizmo.refresh_target(target, true)
+	_mark_scene_changed(false, target)

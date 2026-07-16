@@ -13,4 +13,7 @@ jobs:
         with:
           version: 4.7.0
           use-dotnet: true
-      - run: godot --headless --path . --script res://addons/scatter/tests/run_all.gd
+      - name: Import and parse the editor plugin
+        run: godot --headless --path . --editor --quit
+      - name: Run Scatter tests
+        run: godot --headless --path . --script res://addons/scatter/tests/run_all.gd

@@ -2,33 +2,22 @@
 class_name ScatterGraphController
 extends RefCounted
 
-const ConnectionService := preload("res://addons/scatter/core/services/scatter_connection_service.gd")
+const ConnectionService := preload("res://addons/scatter/core/graph/scatter_connection_service.gd")
 
 var graph: ScatterGraph
 var target: MultiMeshInstance3D
 var undo_redo: EditorUndoRedoManager
-var refresh_graph: Callable
-var sync_views: Callable
-var graph_changed: Callable
-var build_requested: Callable
+var context: ScatterEditorContext
 
 
 func configure(
-		p_graph: ScatterGraph,
-		p_target: MultiMeshInstance3D,
+		p_context: ScatterEditorContext,
 		p_undo_redo: EditorUndoRedoManager,
-		p_refresh_graph: Callable,
-		p_sync_views: Callable,
-		p_graph_changed: Callable,
-		p_build_requested: Callable,
 ) -> void:
-	graph = p_graph
-	target = p_target
+	context = p_context
+	graph = context.graph if context != null else null
+	target = context.target if context != null else null
 	undo_redo = p_undo_redo
-	refresh_graph = p_refresh_graph
-	sync_views = p_sync_views
-	graph_changed = p_graph_changed
-	build_requested = p_build_requested
 
 
 func add_node(type_id: StringName, position: Vector2) -> ScatterNode:
@@ -207,28 +196,15 @@ func _add_structure_callbacks() -> void:
 
 
 func _notify_structure_changed() -> void:
-	if refresh_graph.is_valid():
-		refresh_graph.call()
-	_notify_common()
+	if context != null:
+		context.notify_model_changed(ScatterEditorContext.ChangeKind.STRUCTURE)
 
 
 func _notify_model_changed() -> void:
-	graph.emit_changed()
-	if sync_views.is_valid():
-		sync_views.call()
-	_notify_common()
+	if context != null:
+		context.notify_model_changed(ScatterEditorContext.ChangeKind.PROPERTY)
 
 
 func _notify_layout_changed() -> void:
-	graph.emit_changed()
-	if sync_views.is_valid():
-		sync_views.call()
-	if graph_changed.is_valid():
-		graph_changed.call()
-
-
-func _notify_common() -> void:
-	if graph_changed.is_valid():
-		graph_changed.call()
-	if graph.auto_rebuild and build_requested.is_valid():
-		build_requested.call()
+	if context != null:
+		context.notify_model_changed(ScatterEditorContext.ChangeKind.LAYOUT)

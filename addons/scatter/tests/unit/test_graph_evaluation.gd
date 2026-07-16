@@ -1,6 +1,27 @@
 extends SceneTree
 
 
+class PersistentTestCache:
+	extends ScatterEvaluationCache
+
+	var entries: Dictionary[String, ScatterNodeOutputs] = {}
+
+	func has_outputs(context: ScatterEvaluationContext, node_id: int) -> bool:
+		return entries.has(_key(context, node_id))
+
+	func get_outputs(context: ScatterEvaluationContext, node_id: int) -> ScatterNodeOutputs:
+		return entries.get(_key(context, node_id))
+
+	func store_outputs(context: ScatterEvaluationContext, node_id: int, outputs: ScatterNodeOutputs) -> void:
+		entries[_key(context, node_id)] = outputs
+
+	func clear() -> void:
+		entries.clear()
+
+	func _key(context: ScatterEvaluationContext, node_id: int) -> String:
+		return "%d:%d:%d" % [context.graph.get_instance_id(), context.target.get_instance_id(), node_id]
+
+
 func _init() -> void:
 	ScatterBuiltinRegistry.register_all()
 	var graph := ScatterGraphFactory.create_default()
@@ -33,10 +54,34 @@ func _init() -> void:
 	assert(target.multimesh.transform_format == MultiMesh.TRANSFORM_3D)
 	assert(target.multimesh.use_colors and target.multimesh.use_custom_data)
 	assert(target.multimesh.instance_count == 100)
+	var shared_session := ScatterEvaluationSession.new()
+	assert(ScatterBuildService.build_target(target, graph, shared_session).ok)
+	assert(ScatterBuildService.build_target(target, graph, shared_session).ok)
+	assert(shared_session.evaluation_cache_hits == 0, "Ephemeral cache entries must not leak across build executions")
+	assert(shared_session.execution_id == 2)
+	var persistent_session := ScatterEvaluationSession.new(PersistentTestCache.new())
+	assert(ScatterBuildService.build_target(target, graph, persistent_session).ok)
+	var cached_build := ScatterBuildService.build_target(target, graph, persistent_session)
+	assert(cached_build.ok)
+	assert(persistent_session.evaluation_cache_hits == graph.nodes.size())
+	assert(not cached_build.output_counts.is_empty())
 
 	var compiler := ScatterGraphCompiler.compile(graph)
 	assert(not compiler.has_errors())
 	assert(compiler.ordered_node_ids.size() == graph.nodes.size())
+	var random_node := graph.find_first(&"create_random")
+	var preview_plan := ScatterGraphCompiler.compile_node(graph, random_node.node_id)
+	assert(not preview_plan.has_errors())
+	assert(preview_plan.ordered_node_ids.size() == 2)
+	assert(not preview_plan.ordered_node_ids.has(graph.final_output_node().node_id))
+	var cyclic := ScatterGraphFactory.create_default()
+	var cycle_a := cyclic.add_node(ScatterTransformNode.new())
+	var cycle_b := cyclic.add_node(ScatterTransformNode.new())
+	cyclic.connections.append(ScatterConnection.create(cycle_a.node_id, &"instances", cycle_b.node_id, &"instances"))
+	cyclic.connections.append(ScatterConnection.create(cycle_b.node_id, &"instances", cycle_a.node_id, &"instances"))
+	var cycle_plan := ScatterGraphCompiler.compile(cyclic)
+	assert(cycle_plan.has_errors())
+	assert(cycle_plan.diagnostics.any(func(diagnostic: ScatterDiagnostic): return diagnostic.code == &"cycle"))
 
 	var multi := ScatterGraph.new()
 	var a := ScatterSingleNode.new()

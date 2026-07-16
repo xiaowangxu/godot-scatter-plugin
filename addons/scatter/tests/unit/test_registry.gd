@@ -4,7 +4,7 @@ extends SceneTree
 func _init() -> void:
 	ScatterBuiltinRegistry.register_all()
 	var ids := ScatterNodeRegistry.type_ids()
-	assert(ids.size() == 36, "All built-in Scatter nodes must be registered")
+	assert(ids.size() == 37, "All built-in Scatter nodes must be registered")
 	var seen: Dictionary[StringName, bool] = {}
 	for prototype in ScatterNodeRegistry.prototypes():
 		var type_id := prototype.get_type_id()

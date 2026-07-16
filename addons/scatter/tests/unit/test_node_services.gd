@@ -160,12 +160,14 @@ func _test_shape_filtering() -> void:
 	var cutout := ScatterBoxRegion.new(Vector3.ZERO, Vector3(2, 2, 2))
 	var shape := ScatterSubtractRegion.new(outer, cutout)
 	var instances := ScatterInstances.new()
-	instances.add_instance(Transform3D(Basis(), Vector3.ZERO))
-	instances.add_instance(Transform3D(Basis(), Vector3(4, 0, 0)))
-	instances.add_instance(Transform3D(Basis(), Vector3(8, 0, 0)))
+	instances.add_instance(Transform3D(Basis(), Vector3.ZERO), Color.RED, Color(1, 0, 0, 0))
+	instances.add_instance(Transform3D(Basis(), Vector3(4, 0, 0)), Color.GREEN, Color(0, 1, 0, 0))
+	instances.add_instance(Transform3D(Basis(), Vector3(8, 0, 0)), Color.BLUE, Color(0, 0, 1, 0))
 	ScatterFilterOps.remove_outside(instances, shape)
 	assert(instances.transforms.size() == 1)
 	assert(instances.transforms[0].origin == Vector3(4, 0, 0))
+	assert(instances.colors == [Color.GREEN])
+	assert(instances.custom_data == [Color(0, 1, 0, 0)])
 
 
 func _test_grid_spaces() -> void:

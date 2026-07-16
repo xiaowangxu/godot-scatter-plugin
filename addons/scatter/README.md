@@ -55,5 +55,6 @@ The editor extension controls the selected-node gizmo and optional viewport tool
 Run the headless suite with Godot 4.7:
 
 ```text
+godot --headless --path . --editor --quit
 godot --headless --path . --script res://addons/scatter/tests/run_all.gd
 ```

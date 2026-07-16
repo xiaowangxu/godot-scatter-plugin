@@ -99,6 +99,7 @@ func configure(
 	editor_context.target = target
 	editor_context.graph = graph
 	editor_context.sync_views = sync_views
+	editor_context.rebuild_graph = _queue_graph_rebuild
 	editor_context.graph_changed = _emit_recipe_changed
 	editor_context.build_requested = _emit_build_requested
 	editor_context.undo = ScatterUndoService.new(
@@ -106,15 +107,7 @@ func configure(
 		target if is_instance_valid(target) else graph,
 		editor_context.notify_model_changed,
 	)
-	controller.configure(
-		graph,
-		target,
-		_undo_redo,
-		_queue_graph_rebuild,
-		sync_views,
-		_emit_recipe_changed,
-		_emit_build_requested,
-	)
+	controller.configure(editor_context, _undo_redo)
 	rebuild_graph(true)
 
 
@@ -277,13 +270,14 @@ func _build_add_popup() -> void:
 	_popup_types.clear()
 	var item_id := 1
 	var categories: Array[StringName] = []
-	for prototype in ScatterNodeRegistry.prototypes():
+	var prototypes := ScatterNodeRegistry.prototypes()
+	for prototype in prototypes:
 		if prototype.get_type_id() != &"final_output" and not categories.has(prototype.get_category()):
 			categories.append(prototype.get_category())
 	categories.sort_custom(func(a: StringName, b: StringName) -> bool: return String(a).naturalnocasecmp_to(String(b)) < 0)
 	for category in categories:
 		_add_popup.add_separator(tr(String(category)))
-		for prototype in ScatterNodeRegistry.prototypes():
+		for prototype in prototypes:
 			if prototype.get_category() != category or prototype.get_type_id() == &"final_output":
 				continue
 			_add_popup.add_item(tr(prototype.get_caption()), item_id)

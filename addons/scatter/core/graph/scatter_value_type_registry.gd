@@ -14,6 +14,7 @@ const DYNAMIC_GEOMETRY := &"dynamic_geometry"
 static var _parents: Dictionary = {}
 static var _colors: Dictionary = {}
 static var _visual_ids: Dictionary = {}
+static var _assignable_cache: Dictionary[String, bool] = {}
 static var _next_visual_id := 1
 static var _initialized := false
 
@@ -49,6 +50,7 @@ static func _register_raw(type_id: StringName, parents: Array[StringName], color
 	_colors[type_id] = color
 	_visual_ids[type_id] = _next_visual_id
 	_next_visual_id += 1
+	_assignable_cache.clear()
 	return true
 
 
@@ -62,6 +64,7 @@ static func unregister_type(type_id: StringName) -> bool:
 	_parents.erase(type_id)
 	_colors.erase(type_id)
 	_visual_ids.erase(type_id)
+	_assignable_cache.clear()
 	return true
 
 
@@ -72,9 +75,15 @@ static func is_registered(type_id: StringName) -> bool:
 
 static func is_assignable(actual: StringName, expected: StringName) -> bool:
 	ensure_builtins()
+	var cache_key := "%s>%s" % [actual, expected]
+	if _assignable_cache.has(cache_key):
+		return _assignable_cache[cache_key]
 	if actual == expected:
-		return _parents.has(actual)
+		var registered := _parents.has(actual)
+		_assignable_cache[cache_key] = registered
+		return registered
 	if not _parents.has(actual) or not _parents.has(expected):
+		_assignable_cache[cache_key] = false
 		return false
 	var pending: Array[StringName] = [actual]
 	var visited: Dictionary = {}
@@ -85,8 +94,10 @@ static func is_assignable(actual: StringName, expected: StringName) -> bool:
 		visited[current] = true
 		for parent: StringName in _parents.get(current, []):
 			if parent == expected:
+				_assignable_cache[cache_key] = true
 				return true
 			pending.push_back(parent)
+	_assignable_cache[cache_key] = false
 	return false
 
 
