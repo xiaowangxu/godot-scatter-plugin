@@ -45,7 +45,7 @@ graph_position = Vector2(-1040, 160)
 [sub_resource type="Resource" id="Resource_vyj01"]
 script = ExtResource("4_c0wcx")
 node_id = 2
-graph_position = Vector2(-280, 460)
+graph_position = Vector2(-300, 220)
 
 [sub_resource type="Resource" id="Resource_cuc7n"]
 script = ExtResource("5_thujc")
@@ -66,4 +66,4 @@ graph_position = Vector2(1520, 220)
 script = ExtResource("8_k2g6d")
 nodes = Array[ExtResource("2_lg8e0")]([SubResource("Resource_8ecbt"), SubResource("Resource_vyj01"), SubResource("Resource_cuc7n"), SubResource("Resource_b21t7"), SubResource("Resource_7lqt7")])
 connections = Array[ExtResource("1_uujxr")]([SubResource("Resource_uujxr"), SubResource("Resource_lg8e0"), SubResource("Resource_0muif"), SubResource("Resource_c0wcx")])
-next_node_id = 6
+next_node_id = 8
