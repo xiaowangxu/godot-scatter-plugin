@@ -263,7 +263,7 @@ Model changes are classified into three kinds:
 | ChangeKind | Examples | View behavior | Auto Build |
 | --- | --- | --- | --- |
 | `PROPERTY` | amount, radius, seed, enabled, Path/Paint data | Synchronize existing controls | Yes |
-| `STRUCTURE` | Add, Delete, Connect, Disconnect, Paste | Defer GraphEdit rebuild | Yes |
+| `STRUCTURE` | Add, Delete, Connect, Disconnect, Paste | Deferred incremental reconciliation | Yes |
 | `LAYOUT` | Move a GraphNode | Synchronize positions only | No |
 
 The unified entry point is:
@@ -272,7 +272,7 @@ The unified entry point is:
 ScatterEditorContext.notify_model_changed(kind)
 ```
 
-It emits the graph change, synchronizes controls or queues a rebuild, emits `recipe_changed`, and requests Auto Build when needed.
+It emits the graph change, synchronizes controls or queues structural reconciliation, emits `recipe_changed`, and requests Auto Build when needed.
 
 ### 7.1 Property Editing and Undo/Redo
 
@@ -299,19 +299,21 @@ Numeric and vector drags use `UndoRedo.MERGE_ENDS` so tiny intermediate changes 
 
 ### 7.2 Structural Editing
 
-`ScatterGraphController` creates model transactions after GraphEdit emits add, delete, or connection signals. Structural changes do not destroy port controls during GraphEdit input dispatch:
+`ScatterGraphController` creates model transactions after GraphEdit emits add, delete, or connection signals. Structural changes are deferred until GraphEdit finishes dispatching the current input event:
 
 ```text
 STRUCTURE change
     ↓
-_queue_graph_rebuild()
+_queue_structure_reconcile()
     ↓ call_deferred
-_flush_graph_rebuild()
+_flush_structure_reconcile()
     ↓
-rebuild_graph()
+reconcile_graph_structure()
 ```
 
-Deferring avoids destroying a port hot zone while Godot is still handling a mouse-connection event, which could otherwise trigger box selection.
+The editor compares the Working Graph with its rendered node signatures and connection keys. Add/Delete/Paste creates or removes only affected Views; ordinary Connect/Disconnect changes only the edge. A View is replaced locally when its port layout changes, notably for Final Output variadic rows and Shape Transform's adaptive geometry type. Unaffected Views retain object identity, selection, controls, and viewport-tool state.
+
+Deferring avoids modifying a port hot zone while Godot is still handling a mouse-connection event, which could otherwise trigger box selection. Full `rebuild_graph()` remains available for initial configuration, Target/Recipe switches, registry changes, and recovery.
 
 ### 7.3 Layout Editing
 
@@ -359,6 +361,8 @@ The View reads `model.get_property_list()` and chooses controls from the Variant
 | `@export_file` | File-path LineEdit |
 
 Ranges and enums are defined once in the node model, preventing Model and View constraints from drifting. Final Output and Paint Region keep specialized Views because they need custom statistics or layout.
+
+Each View exposes a structural signature derived from its visible port descriptors. Specialized Views extend the signature with layout dependencies; Final Output includes its incoming variadic connection count. The Graph editor stores the signature produced when a View is built and replaces that View only when the desired signature changes.
 
 ---
 
@@ -947,7 +951,7 @@ Coverage includes:
 - placement, transform, filter, and geometry operations;
 - core/editor dependency rules;
 - Recipe defaults and explicit saving;
-- GraphEdit, Undo, Sidebar, Path/Paint, and session lifecycle;
+- GraphEdit incremental Add/Delete/Connect/Disconnect/Paste, Undo/Redo reconciliation, Sidebar, Path/Paint, and session lifecycle;
 - Path Extrude;
 - BuildCoordinator and synchronous/delayed schedulers;
 - Demo Recipe loading and real Builds.

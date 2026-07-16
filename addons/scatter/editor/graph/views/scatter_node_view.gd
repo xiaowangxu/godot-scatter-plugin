@@ -84,6 +84,18 @@ func update_runtime_stats() -> void:
 	pass
 
 
+func structure_signature() -> Array:
+	var result: Array = [model.get_type_id() if model != null else &""]
+	if model == null:
+		return result
+	for port in model.get_input_ports():
+		result.append(_port_signature(port, false))
+	result.append(&"outputs")
+	for port in model.get_output_ports():
+		result.append(_port_signature(port, true))
+	return result
+
+
 func get_viewport_tool_id() -> StringName:
 	return &""
 
@@ -410,6 +422,19 @@ func _tint_native_titlebar(color: Color) -> void:
 		var tinted_selected := selected_style.duplicate() as StyleBoxFlat
 		tinted_selected.bg_color = color.darkened(0.27)
 		add_theme_stylebox_override("titlebar_selected", tinted_selected)
+
+
+static func _port_signature(port: ScatterPort, is_output: bool) -> Array:
+	return [
+		is_output,
+		port.id,
+		port.label,
+		port.type_id,
+		port.visual_type_id,
+		port.variadic,
+		port.connectable,
+		port.visible,
+	]
 
 
 static func _path_to_text(points: PackedVector3Array) -> String:

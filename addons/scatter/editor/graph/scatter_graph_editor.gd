@@ -41,7 +41,9 @@ var _pending_moves: Dictionary = {}
 var _move_commit_pending := false
 var _active_viewport_node_id := 0
 var _rebuilding_graph := false
-var _graph_rebuild_pending := false
+var _structure_reconcile_pending := false
+var _node_structure_signatures: Dictionary = {}
+var _rendered_connections: Dictionary = {}
 
 
 func _ready() -> void:
@@ -99,7 +101,7 @@ func configure(
 	editor_context.target = target
 	editor_context.graph = graph
 	editor_context.sync_views = sync_views
-	editor_context.rebuild_graph = _queue_graph_rebuild
+	editor_context.reconcile_structure = _queue_structure_reconcile
 	editor_context.graph_changed = _emit_recipe_changed
 	editor_context.build_requested = _emit_build_requested
 	editor_context.undo = ScatterUndoService.new(
@@ -112,22 +114,19 @@ func configure(
 
 
 func clear_target() -> void:
-	_graph_rebuild_pending = false
+	_structure_reconcile_pending = false
 	_set_active_viewport_view(null)
 	target = null
 	graph = null
 	editor_context = null
 	clear_connections()
+	_rendered_connections.clear()
+	_node_structure_signatures.clear()
 	_clear_node_views()
 
 
 func rebuild_graph(focus_view := false) -> void:
-	# A synchronous rebuild from GraphEdit's connection signals destroys and
-	# recreates the port controls while Godot is still dispatching the same
-	# mouse event. Its subsequent port hot-zone check then sees an incomplete
-	# layout and starts a box selection. Structural edits therefore queue their
-	# visual rebuild until the input dispatch has finished.
-	_graph_rebuild_pending = false
+	_structure_reconcile_pending = false
 	if graph == null or editor_context == null:
 		clear_target()
 		return
@@ -143,28 +142,13 @@ func rebuild_graph(focus_view := false) -> void:
 	_active_viewport_node_id = 0
 	_rebuilding_graph = true
 	clear_connections()
+	_rendered_connections.clear()
+	_node_structure_signatures.clear()
 	_clear_node_views()
 	for node in graph.nodes:
-		var view_script := ScatterExtensionRegistry.get_view_script(node.get_type_id())
-		if view_script == null:
-			continue
-		var view = view_script.new()
-		if not view is ScatterNodeView:
-			continue
-		add_child(view)
-		view.bind_model(node, editor_context)
-		view.dragged.connect(_node_dragged.bind(node.node_id))
+		_create_node_view(node)
 	for connection in graph.connections:
-		var from_view := get_view(connection.from_node_id)
-		var to_view := get_view(connection.to_node_id)
-		if from_view == null or to_view == null:
-			continue
-		var from_index := from_view.output_port_index(connection.from_port_id)
-		var input_port := to_view.model.input_port(connection.to_port_id)
-		var port_order := connection.order if input_port != null and input_port.variadic else 0
-		var to_index := to_view.input_port_index(connection.to_port_id, port_order)
-		if from_index >= 0 and to_index >= 0:
-			connect_node(from_view.name, from_index, to_view.name, to_index)
+		_connect_model_connection(connection)
 	zoom = previous_zoom
 	scroll_offset = previous_scroll
 	for node_id in selection:
@@ -181,18 +165,170 @@ func rebuild_graph(focus_view := false) -> void:
 		focus_recipe()
 
 
-func _queue_graph_rebuild() -> void:
-	if _graph_rebuild_pending:
-		return
-	_graph_rebuild_pending = true
-	_flush_graph_rebuild.call_deferred()
+func _create_node_view(node: ScatterNode) -> ScatterNodeView:
+	if node == null:
+		return null
+	var view_script := ScatterExtensionRegistry.get_view_script(node.get_type_id())
+	if view_script == null:
+		return null
+	var candidate = view_script.new()
+	if not candidate is ScatterNodeView:
+		return null
+	var view := candidate as ScatterNodeView
+	add_child(view)
+	view.bind_model(node, editor_context)
+	view.dragged.connect(_node_dragged.bind(node.node_id))
+	_node_structure_signatures[node.node_id] = view.structure_signature()
+	return view
 
 
-func _flush_graph_rebuild() -> void:
-	if not _graph_rebuild_pending:
+func _desired_connection_map() -> Dictionary:
+	var result: Dictionary = {}
+	if graph == null:
+		return result
+	for connection in graph.connections:
+		if connection != null:
+			result[_connection_key(connection)] = connection
+	return result
+
+
+func _connection_key(connection: ScatterConnection) -> String:
+	return "%d:%s>%d:%s:%d" % [
+		connection.from_node_id,
+		connection.from_port_id,
+		connection.to_node_id,
+		connection.to_port_id,
+		connection.order,
+	]
+
+
+func _connect_model_connection(connection: ScatterConnection) -> bool:
+	if connection == null:
+		return false
+	var key := _connection_key(connection)
+	if _rendered_connections.has(key):
+		return true
+	var from_view := get_view(connection.from_node_id)
+	var to_view := get_view(connection.to_node_id)
+	if from_view == null or to_view == null:
+		return false
+	var from_index := from_view.output_port_index(connection.from_port_id)
+	var input_port := to_view.model.input_port(connection.to_port_id)
+	var port_order := connection.order if input_port != null and input_port.variadic else 0
+	var to_index := to_view.input_port_index(connection.to_port_id, port_order)
+	if from_index < 0 or to_index < 0:
+		return false
+	if connect_node(from_view.name, from_index, to_view.name, to_index) != OK:
+		return false
+	_rendered_connections[key] = {
+		"from_node_id": connection.from_node_id,
+		"from_name": from_view.name,
+		"from_port": from_index,
+		"to_node_id": connection.to_node_id,
+		"to_name": to_view.name,
+		"to_port": to_index,
+	}
+	return true
+
+
+func _disconnect_rendered_connection(key: String) -> void:
+	var rendered: Dictionary = _rendered_connections.get(key, {})
+	if rendered.is_empty():
 		return
-	_graph_rebuild_pending = false
-	rebuild_graph()
+	disconnect_node(
+		rendered.from_name,
+		int(rendered.from_port),
+		rendered.to_name,
+		int(rendered.to_port),
+	)
+	_rendered_connections.erase(key)
+
+
+func _queue_structure_reconcile() -> void:
+	if _structure_reconcile_pending:
+		return
+	_structure_reconcile_pending = true
+	_flush_structure_reconcile.call_deferred()
+
+
+func _flush_structure_reconcile() -> void:
+	if not _structure_reconcile_pending:
+		return
+	_structure_reconcile_pending = false
+	reconcile_graph_structure()
+
+
+func reconcile_graph_structure() -> void:
+	# GraphEdit is still dispatching its connection mouse event when the model
+	# transaction commits. Reconcile on the deferred callback so port controls
+	# are never removed while GraphEdit is checking their hot zones.
+	if graph == null or editor_context == null:
+		clear_target()
+		return
+	var selection := selected_node_ids(false)
+	var previous_active := int(_active_viewport_node_id)
+	var model_nodes: Dictionary[int, ScatterNode] = {}
+	for node in graph.nodes:
+		if node != null:
+			model_nodes[node.node_id] = node
+	var replaced: Dictionary[int, bool] = {}
+	for child in get_children():
+		if not child is ScatterNodeView:
+			continue
+		var view := child as ScatterNodeView
+		var node_id := view.model.node_id if view.model != null else String(view.name).to_int()
+		var model_node: ScatterNode = model_nodes.get(node_id)
+		var view_script := ScatterExtensionRegistry.get_view_script(model_node.get_type_id()) if model_node != null else null
+		if (
+			model_node == null
+			or view.model != model_node
+			or view_script == null
+			or view.get_script() != view_script
+			or _node_structure_signatures.get(node_id) != view.structure_signature()
+		):
+			replaced[node_id] = true
+	for node_id in model_nodes:
+		if get_view(node_id) == null:
+			replaced[node_id] = true
+	var active_replaced := replaced.has(previous_active)
+	if active_replaced:
+		var active_view := get_view(previous_active)
+		if active_view != null:
+			active_view.viewport_tool_deactivated()
+		_active_viewport_node_id = 0
+	_rebuilding_graph = true
+	var desired_connections := _desired_connection_map()
+	for key in _rendered_connections.keys():
+		var rendered: Dictionary = _rendered_connections[key]
+		if (
+			not desired_connections.has(key)
+			or replaced.has(int(rendered.from_node_id))
+			or replaced.has(int(rendered.to_node_id))
+		):
+			_disconnect_rendered_connection(key)
+	for node_id in replaced:
+		var old_view := get_view(node_id)
+		if old_view != null:
+			remove_child(old_view)
+			old_view.queue_free()
+		_node_structure_signatures.erase(node_id)
+	for node in graph.nodes:
+		if node != null and get_view(node.node_id) == null:
+			_create_node_view(node)
+	for key in desired_connections:
+		if not _rendered_connections.has(key):
+			_connect_model_connection(desired_connections[key])
+	for node_id in selection:
+		var view := get_view(node_id)
+		if view != null:
+			view.selected = true
+	_rebuilding_graph = false
+	if active_replaced:
+		var restored_active := get_view(previous_active)
+		if restored_active != null and restored_active.selected:
+			_set_active_viewport_view(restored_active)
+		elif previous_active != 0:
+			viewport_tool_changed.emit(0, &"")
 
 
 func sync_views() -> void:

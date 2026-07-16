@@ -88,6 +88,8 @@ func _init() -> void:
 	assert(graph_editor.get_connection_list().size() == connection_count)
 	await process_frame
 	assert(graph_editor.get_connection_list().size() == connection_count - 1)
+	assert(graph_editor.get_view(tested_connection.from_node_id) == tested_from_view)
+	assert(graph_editor.get_view(tested_connection.to_node_id) == tested_to_view)
 	assert(graph_editor.controller.connect_ports(
 		tested_connection.from_node_id,
 		tested_connection.from_port_id,
@@ -97,6 +99,9 @@ func _init() -> void:
 	))
 	await process_frame
 	assert(graph_editor.get_connection_list().size() == connection_count)
+	assert(graph_editor.get_view(tested_connection.from_node_id) == tested_from_view)
+	assert(graph_editor.get_view(tested_connection.to_node_id) == tested_to_view)
+	await _test_incremental_graph_updates(graph, graph_editor)
 	var clipboard_graph := ScatterGraph.new()
 	var clipboard_box := ScatterBoxNode.new()
 	var clipboard_transform := ScatterShapeTransformNode.new()
@@ -235,6 +240,141 @@ func _init() -> void:
 	ScatterBuiltinRegistry.unregister_all()
 	print("Scatter editor architecture test passed")
 	quit()
+
+
+func _test_incremental_graph_updates(
+		graph: ScatterGraph,
+		graph_editor: ScatterGraphEditor,
+) -> void:
+	var initial_node_count := graph.nodes.size()
+	var initial_connection_count := graph.connections.size()
+	var stable_node := graph.find_first(&"random_rotation")
+	var stable_view := graph_editor.get_view(stable_node.node_id)
+
+	# Add and Delete patch only the changed node.
+	var added := graph_editor.controller.add_node(&"set_color", Vector2(700, 500))
+	assert(added != null and graph_editor.get_view(added.node_id) == null)
+	await process_frame
+	var added_view := graph_editor.get_view(added.node_id)
+	assert(added_view != null)
+	assert(graph_editor.get_view(stable_node.node_id) == stable_view)
+	graph_editor.controller.delete_nodes([added.node_id])
+	assert(graph_editor.get_view(added.node_id) == added_view)
+	await process_frame
+	assert(graph_editor.get_view(added.node_id) == null)
+	assert(graph_editor.get_view(stable_node.node_id) == stable_view)
+	assert(graph.nodes.size() == initial_node_count)
+
+	# Paste adds a subgraph and its internal connections without touching views
+	# that were already present.
+	var scale_node := graph.find_first(&"scale")
+	var paste_buffer := ScatterGraphClipboard.new()
+	paste_buffer.capture(graph, [stable_node.node_id, scale_node.node_id])
+	var pasted_ids := graph_editor.controller.paste(paste_buffer, Vector2(500, 700))
+	assert(pasted_ids.size() == 2)
+	for node_id in pasted_ids:
+		assert(graph_editor.get_view(node_id) == null)
+	await process_frame
+	for node_id in pasted_ids:
+		assert(graph_editor.get_view(node_id) != null)
+	assert(graph_editor.get_view(stable_node.node_id) == stable_view)
+	assert(graph.nodes.size() == initial_node_count + 2)
+	assert(graph.connections.size() == initial_connection_count + 1)
+	assert(graph_editor.get_connection_list().size() == graph.connections.size())
+	graph_editor.controller.delete_nodes(pasted_ids)
+	await process_frame
+	assert(graph.nodes.size() == initial_node_count)
+	assert(graph.connections.size() == initial_connection_count)
+	assert(graph_editor.get_connection_list().size() == graph.connections.size())
+	assert(graph_editor.get_view(stable_node.node_id) == stable_view)
+
+	# Variadic Final Output rows depend on connection count, so only that view is
+	# replaced while unrelated views keep their identity.
+	var single := graph_editor.controller.add_node(&"single", Vector2(700, 700))
+	await process_frame
+	var final_node := graph.final_output_node()
+	var final_before := graph_editor.get_view(final_node.node_id)
+	var incoming_before := graph.incoming_connections(final_node.node_id, &"instances").size()
+	assert(graph_editor.controller.connect_ports(single.node_id, &"instances", final_node.node_id, &"instances"))
+	var single_connection: ScatterConnection
+	for connection in graph.incoming_connections(final_node.node_id, &"instances"):
+		if connection.from_node_id == single.node_id:
+			single_connection = connection
+			break
+	assert(single_connection != null)
+	assert(graph_editor.get_view(final_node.node_id) == final_before)
+	await process_frame
+	var final_connected := graph_editor.get_view(final_node.node_id)
+	assert(final_connected != final_before)
+	assert(final_connected.input_port_order.size() == incoming_before + 2)
+	assert(graph_editor.get_connection_list().size() == graph.connections.size())
+	assert(graph_editor.get_view(stable_node.node_id) == stable_view)
+	graph_editor.controller.disconnect_connection(single_connection)
+	await process_frame
+	var final_disconnected := graph_editor.get_view(final_node.node_id)
+	assert(final_disconnected != final_connected)
+	assert(final_disconnected.input_port_order.size() == incoming_before + 1)
+	assert(graph_editor.get_connection_list().size() == graph.connections.size())
+	assert(graph_editor.get_view(stable_node.node_id) == stable_view)
+	graph_editor.controller.delete_nodes([single.node_id])
+	await process_frame
+
+	# Shape Transform changes its adaptive port label and visual type when a
+	# connection is made. Rebuild only that dynamic-port view.
+	var shape_transform := graph_editor.controller.add_node(&"shape_transform", Vector2(350, 700)) as ScatterShapeTransformNode
+	await process_frame
+	var shape_before := graph_editor.get_view(shape_transform.node_id)
+	var box_node := graph.find_first(&"shape_box")
+	assert(graph_editor.controller.connect_ports(box_node.node_id, &"region", shape_transform.node_id, &"geometry"))
+	var shape_connection := graph.incoming_connections(shape_transform.node_id, &"geometry")[0]
+	await process_frame
+	var shape_connected := graph_editor.get_view(shape_transform.node_id)
+	assert(shape_connected != shape_before)
+	assert(shape_transform.geometry_type == ScatterValueTypeRegistry.REGULAR_REGION)
+	assert(_view_has_label(shape_connected, "Regular Region"))
+	assert(graph_editor.get_connection_list().size() == graph.connections.size())
+	assert(graph_editor.get_view(stable_node.node_id) == stable_view)
+	graph_editor.controller.disconnect_connection(shape_connection)
+	await process_frame
+	var shape_disconnected := graph_editor.get_view(shape_transform.node_id)
+	assert(shape_disconnected != shape_connected)
+	assert(shape_transform.geometry_type == ScatterValueTypeRegistry.DYNAMIC_GEOMETRY)
+	assert(_view_has_label(shape_disconnected, "Shape"))
+	assert(graph_editor.get_connection_list().size() == graph.connections.size())
+	assert(graph_editor.get_view(stable_node.node_id) == stable_view)
+	graph_editor.controller.delete_nodes([shape_transform.node_id])
+	await process_frame
+
+	# EditorUndoRedoManager is owned by the editor and cannot be constructed by
+	# a headless SceneTree test. Exercise the exact model methods and structural
+	# callback registered on both sides of the real UndoRedo action.
+	var undo_node := graph_editor.controller.add_node(&"set_color", Vector2(700, 500))
+	await process_frame
+	assert(graph_editor.get_view(undo_node.node_id) != null)
+	assert(graph_editor.get_view(stable_node.node_id) == stable_view)
+	graph.remove_nodes([undo_node.node_id])
+	graph_editor.controller._notify_structure_changed()
+	await process_frame
+	assert(graph_editor.get_view(undo_node.node_id) == null)
+	assert(graph_editor.get_view(stable_node.node_id) == stable_view)
+	graph.add_existing_nodes([undo_node], [])
+	graph_editor.controller._notify_structure_changed()
+	await process_frame
+	assert(graph_editor.get_view(undo_node.node_id) != null)
+	assert(graph_editor.get_view(stable_node.node_id) == stable_view)
+	graph.remove_nodes([undo_node.node_id])
+	graph_editor.controller._notify_structure_changed()
+	await process_frame
+	assert(graph_editor.get_view(undo_node.node_id) == null)
+	assert(graph.nodes.size() == initial_node_count)
+	assert(graph.connections.size() == initial_connection_count)
+
+
+func _view_has_label(view: ScatterNodeView, text: String) -> bool:
+	for child in view.get_children():
+		if child is Label and child.text == text:
+			return true
+	return false
 
 
 func _test_scene_recipe_session_lifecycle(panel: ScatterPanel) -> void:

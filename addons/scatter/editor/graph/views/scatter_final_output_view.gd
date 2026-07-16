@@ -24,6 +24,13 @@ func _build_properties() -> void:
 	pass
 
 
+func structure_signature() -> Array:
+	var result := super.structure_signature()
+	var connected := context.graph.incoming_connections(model.node_id, &"instances").size() if context != null and context.graph != null else 0
+	result.append(connected)
+	return result
+
+
 func update_runtime_stats() -> void:
 	if _count_label == null or context == null:
 		return

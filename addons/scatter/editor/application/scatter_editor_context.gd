@@ -12,7 +12,7 @@ var target: MultiMeshInstance3D
 var graph: ScatterGraph
 var undo: ScatterUndoService
 var sync_views: Callable
-var rebuild_graph: Callable
+var reconcile_structure: Callable
 var graph_changed: Callable
 var build_requested: Callable
 var output_counts: Dictionary = {}
@@ -33,8 +33,8 @@ func commit_property(
 func notify_model_changed(kind := ChangeKind.PROPERTY) -> void:
 	if graph != null:
 		graph.emit_changed()
-	if kind == ChangeKind.STRUCTURE and rebuild_graph.is_valid():
-		rebuild_graph.call()
+	if kind == ChangeKind.STRUCTURE and reconcile_structure.is_valid():
+		reconcile_structure.call()
 	elif sync_views.is_valid():
 		sync_views.call()
 	if graph_changed.is_valid():

@@ -108,10 +108,10 @@ node type + serialized node properties + graph seed
 | Change kind | 更新模型信号 | 更新视图 | 标记 Recipe dirty | Auto Build |
 | --- | --- | --- | --- | --- |
 | Property | 是 | 同步控件 | 是 | 是 |
-| Structure | 是 | 延迟重建 GraphEdit | 是 | 是 |
+| Structure | 是 | 延迟增量协调节点与连接 | 是 | 是 |
 | Layout | 是 | 同步位置 | 是 | 否 |
 
-Graph controller、节点表单、Paint、Path 和图级属性不再各自复制 `emit_changed → sync_views → dirty → auto build` 链路。`ScatterUndoService` 只负责事务和回调；没有 EditorUndoRedoManager 的测试/工具环境也会正确发出 Resource changed。
+Graph controller、节点表单、Paint、Path 和图级属性不再各自复制 `emit_changed → sync_views → dirty → auto build` 链路。结构通知通过 `call_deferred` 合并到一次模型/视图差异协调：Add/Delete/Paste 只增删相关 View，普通 Connect/Disconnect 只改连线；Final Output 变长输入和 Shape Transform 动态端口变化时仅重建受影响 View。完整 `rebuild_graph()` 只用于首次配置、Target/Recipe 切换、Registry 变化和异常恢复。`ScatterUndoService` 只负责事务和回调；没有 EditorUndoRedoManager 的测试/工具环境也会正确发出 Resource changed。
 
 ## 节点视图
 
@@ -128,6 +128,7 @@ Graph controller、节点表单、Paint、Path 和图级属性不再各自复制
 - 图编译/求值由重复线性扫描改为一次索引后近似 `O(V + E)` 遍历。
 - Remove Outside / Remove Random 使用线性压缩，不再对三个数组反复 `remove_at()` 导致最坏 `O(n²)` 搬移。
 - MultiMesh buffer 写入不再为每个实例创建 20 元素临时 Array。
+- GraphEdit 结构编辑使用延迟增量协调，不再销毁并重建全部节点 View。
 - Random Transform 将 Target frame 计算移出实例循环。
 - `ScatterInstances.append_instances()` 使用批量追加。
 - 所选节点预览只执行其祖先，并设置独立实例上限。
