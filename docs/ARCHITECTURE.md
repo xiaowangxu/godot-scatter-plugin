@@ -15,7 +15,7 @@ addons/scatter/
 │  ├─ geometry/    Shape / Region 的几何实现
 │  └─ values/      求值期间传递的 Shape、Path、Instances 等值对象
 ├─ editor/
-│  ├─ application/ 编辑会话、Undo、Recipe IO、构建协调器和编辑上下文
+│  ├─ application/ 插件协调器、编辑会话、Undo、Recipe IO、构建协调器和编辑上下文
 │  ├─ graph/       GraphEdit、图命令控制器、剪贴板和节点视图
 │  ├─ registry/    内置节点与外部扩展注册
 │  ├─ extensions/  节点编辑扩展接口
@@ -36,7 +36,7 @@ addons/scatter/
 | --- | --- | --- |
 | `core/services` 同时包含编译器、实例算法、资源附着和 MultiMesh 写入 | 修改原因混杂，线程边界不可见 | 拆为 `execution / graph / operations / io` |
 | `core/nodes/<category>` 与 `editor/views/<category>` 为每个节点维护镜像脚本 | 端口、范围、枚举和文案容易漂移 | 通用视图读取节点端口和 `@export` 元数据，仅保留特殊视图 |
-| `plugin.gd` 直接处理 Build 结果并写 MultiMesh | 生命周期入口承担业务流程，无法替换执行策略 | `ScatterBuildCoordinator` 和 Scheduler/Backend 接管 |
+| `plugin.gd` 同时处理生命周期和模块间信号/Target/Build UI 流 | 入口承担业务协调，组件难以独立演进和测试 | `plugin.gd` 只装配与销毁；`ScatterPlugin` 负责应用协调 |
 | 编译器和求值器反复调用 `find_node/incoming_connections` | 大图趋向重复扫描，深图递归还会耗尽栈 | `ScatterGraphIndex` + 迭代式拓扑排序 |
 | Evaluation cache 用 instance ID 字符串且没有 Build 边界 | 会话复用时可能读到图或 Target 修改前的值 | execution ID 隔离默认缓存；持久缓存通过接口自行提供内容键 |
 | Filter 对三个数组逐项 `remove_at` | 大实例数最坏出现平方级搬移 | 单次 keep-mask 线性压缩 |
@@ -48,15 +48,21 @@ addons/scatter/
 
 ## 总体数据流
 
+`plugin.gd` 是 Godot 生命周期适配器：它创建、配置、注册和反注册组件，并把 `_edit`、`_make_visible`、`_forward_3d_gui_input` 回调转发给 `ScatterPlugin`。`ScatterPlugin` 是应用协调器：它连接 Panel、Inspector、Recipe Link、Gizmo、Viewport Tool Host 和 Build Coordinator 的信号，持有当前 Target，并负责 Build 后的状态、场景 dirty 标记和 Gizmo 刷新。协调器不拥有组件注册，关闭时先断开所有信号，再由 `plugin.gd` 按逆序销毁组件。
+
 ```mermaid
 flowchart LR
-    UI["Graph / Inspector / Viewport"] --> EC["ScatterEditorContext"]
+    ENTRY["plugin.gd / 生命周期"] --> APP["ScatterPlugin / 模块协调"]
+    UI["Graph / Inspector / Viewport"] <--> APP
+    UI --> EC["ScatterEditorContext"]
     EC --> G["ScatterGraph working copy"]
+    APP --> C["ScatterBuildCoordinator"]
     G --> C["ScatterBuildCoordinator"]
     C --> S["ScatterBuildScheduler"]
     S --> B["ScatterGenerationBackend"]
     B --> R["ScatterBuildResult"]
-    R --> W["ScatterMultiMeshWriter"]
+    R --> C
+    C --> W["ScatterMultiMeshWriter"]
     W --> M["MultiMeshInstance3D"]
 ```
 

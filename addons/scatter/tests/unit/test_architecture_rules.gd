@@ -21,6 +21,17 @@ func _init() -> void:
 	assert(han.compile("[\\x{4E00}-\\x{9FFF}]") == OK)
 	for path in editor_files:
 		assert(han.search(FileAccess.get_file_as_string(path)) == null, "Editor UI source must use English tr() text: %s" % path)
+	var plugin_entry := FileAccess.get_file_as_string("res://addons/scatter/plugin.gd")
+	var plugin_coordinator := FileAccess.get_file_as_string(
+		"res://addons/scatter/editor/application/scatter_plugin.gd",
+	)
+	assert(plugin_entry.contains("extends EditorPlugin"))
+	assert(plugin_entry.contains("ScatterPluginScript.new()"))
+	assert(not plugin_entry.contains(".connect("))
+	assert(not plugin_entry.contains("func _build_"))
+	assert(not plugin_entry.contains("func _open_target"))
+	assert(plugin_coordinator.contains("class_name ScatterPlugin"))
+	assert(plugin_coordinator.contains("_build_coordinator.build(target, mark_unsaved)"))
 	assert(ScatterNodeRegistry.type_ids().size() == 36)
 	assert(not evaluator.contains("ScatterBoxNode"))
 	var gizmo := FileAccess.get_file_as_string("res://addons/scatter/editor/gizmo/scatter_gizmo_plugin.gd")

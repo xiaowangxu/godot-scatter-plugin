@@ -42,7 +42,7 @@ addons/scatter/
 │  ├─ values/          Runtime values such as Shape, Path, and Instances
 │  └─ io/              Recipe attachment and MultiMesh presentation
 ├─ editor/
-│  ├─ application/     Editor context, Recipe sessions, Undo, and Build coordination
+│  ├─ application/     Plugin coordination, editor context, Recipe sessions, Undo, and Builds
 │  ├─ graph/           GraphEdit, graph commands, clipboard, and node views
 │  ├─ registry/        Built-in node and external-extension registration
 │  ├─ extensions/      Node Gizmo and viewport-tool extension interfaces
@@ -57,15 +57,15 @@ addons/scatter/
 
 ### 2.1 Responsibilities of `plugin.gd`
 
-`plugin.gd` is the composition root. It only:
+`plugin.gd` is the Godot-facing lifecycle entry point. It only:
 
 - registers and unregisters built-in nodes;
-- creates the Panel, Inspector integration, Gizmo, and Viewport Tool Host;
-- connects Godot editor signals to application-layer controllers;
-- retains the selected `MultiMeshInstance3D`;
-- translates Build completion into UI updates, scene dirty state, and Gizmo refreshes.
+- creates, configures, and registers the Panel, Inspector integration, Gizmo, Viewport Tool Host, and Build Coordinator;
+- constructs `ScatterPlugin` with those components;
+- forwards the required `EditorPlugin` callbacks;
+- disconnects the coordinator and destroys components in a deterministic order.
 
-Graph compilation, dependency scanning, Recipe attachment/detachment, and MultiMesh writing are implemented outside the entry point.
+`ScatterPlugin` is the application coordinator. It owns no Godot component registration. It connects module signals, retains the selected `MultiMeshInstance3D`, routes open/configure/load/detach actions, triggers Builds, handles Build status, marks scenes dirty, refreshes Gizmos, and forwards viewport-tool selection. Graph compilation, Recipe attachment/detachment transactions, and MultiMesh writing remain in their dedicated services.
 
 ---
 
@@ -73,7 +73,8 @@ Graph compilation, dependency scanning, Recipe attachment/detachment, and MultiM
 
 ```mermaid
 flowchart TD
-    EP["plugin.gd / EditorPlugin"]
+    EP["plugin.gd / lifecycle adapter"]
+    APP["ScatterPlugin / application coordinator"]
     INSP["ScatterInspectorPlugin"]
     PANEL["ScatterPanel"]
     GE["ScatterGraphEditor"]
@@ -85,12 +86,19 @@ flowchart TD
     VPH["ScatterViewportToolHost"]
     BC["ScatterBuildCoordinator"]
 
-    EP --> INSP
-    EP --> PANEL
-    EP --> LINK
-    EP --> GIZMO
-    EP --> VPH
-    EP --> BC
+    EP -->|"creates and registers"| INSP
+    EP -->|"creates and registers"| PANEL
+    EP -->|"creates"| LINK
+    EP -->|"creates and registers"| GIZMO
+    EP -->|"creates"| VPH
+    EP -->|"creates"| BC
+    EP -->|"constructs"| APP
+    APP -->|"signals and commands"| INSP
+    APP -->|"signals and commands"| PANEL
+    APP -->|"signals and commands"| LINK
+    APP -->|"signals and commands"| GIZMO
+    APP -->|"signals and commands"| VPH
+    APP -->|"signals and commands"| BC
     PANEL --> SESSION
     PANEL --> GE
     GE --> GC
@@ -102,6 +110,8 @@ flowchart TD
 
 | Component | Responsibility |
 | --- | --- |
+| `plugin.gd` | Godot `EditorPlugin` lifecycle, component ownership, registration, and callback forwarding |
+| `ScatterPlugin` | Cross-module signal wiring, active Target state, Build/UI flow, scene notifications, and viewport routing |
 | `ScatterPanel` | Current Target, Recipe Working Graph, Toolbar, Sidebar, dialogs, and status |
 | `ScatterGraphEditor` | GraphEdit, node views, connection display, selection, menus, and shortcuts |
 | `ScatterGraphController` | Add/Delete/Connect/Disconnect/Move/Paste/Toggle commands and Undo transactions |
@@ -132,21 +142,25 @@ ScatterGizmoPlugin
 ScatterViewportToolHost
     ↓
 ScatterBuildCoordinator
+    ↓
+ScatterPlugin.configure(...) connects application signals
 ```
 
-Shutdown happens in reverse order. The Build scheduler and viewport tools stop first, then the Gizmo, Inspector, Panel, and node registry. A future asynchronous scheduler must cancel or ignore unfinished requests during `shutdown()`.
+Shutdown first calls `ScatterPlugin.shutdown()` so no component signal can enter application logic during teardown. It then stops the Build scheduler and viewport tools, removes the Gizmo and Inspector, frees the Panel, and unregisters the node registry. A future asynchronous scheduler must cancel or ignore unfinished requests during `shutdown()`.
 
 Object selection follows this flow:
 
 ```mermaid
 sequenceDiagram
     participant Godot as Godot Editor
-    participant Plugin as plugin.gd
+    participant Entry as plugin.gd
+    participant Plugin as ScatterPlugin
     participant Panel as ScatterPanel
     participant Tools as ViewportToolHost
     participant Gizmo as ScatterGizmoPlugin
 
-    Godot->>Plugin: _edit(object)
+    Godot->>Entry: _edit(object)
+    Entry->>Plugin: edit(object)
     alt object is MultiMeshInstance3D
         Plugin->>Panel: set_target(target)
         Plugin->>Tools: set_target(target)
@@ -805,7 +819,7 @@ ScatterGraphEditor._set_active_viewport_view
     ↓ viewport_tool_changed(node_id, tool_id)
 ScatterPanel
     ↓ viewport_tool_changed(tool_id, node_id)
-plugin.gd
+ScatterPlugin
     ├─ Gizmo.set_active_node
     └─ ViewportToolHost.select
 ```
@@ -1002,7 +1016,7 @@ notify_model_changed(PROPERTY)
     ├─ Sidebar/Toolbar show dirty state
     └─ build_requested
           ↓
-      plugin.gd._build_current
+      ScatterPlugin._build_current
           ↓
       ScatterBuildCoordinator
           ↓ scheduler.submit(BuildRequest)
@@ -1016,10 +1030,9 @@ notify_model_changed(PROPERTY)
                       ↓ completion
             BuildCoordinator main-thread Presentation
                 ├─ MultiMeshWriter writes the 20-float buffer
-                ├─ build dependents
                 └─ build_succeeded
                       ↓
-            plugin.gd marks scene dirty and refreshes Inspector, Gizmo, and Status Bar
+            ScatterPlugin marks the scene dirty and refreshes Inspector, Gizmo, and Status Bar
 ```
 
 This path summarizes the architecture's main objective: model editing, editor state, generation, and scene presentation remain separate layers connected through stable, testable interfaces.
