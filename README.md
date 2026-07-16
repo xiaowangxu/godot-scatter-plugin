@@ -48,7 +48,6 @@ It does not add custom nodes to your scene tree and it does not evaluate the gra
 - Physics projection onto colliders.
 - Remove Outside and Remove Random filters.
 - Random color and custom-data generation.
-- Proxy Graph for using the output of another Scatter-enabled `MultiMeshInstance3D`.
 - Ordered, variadic Final Output inputs for combining multiple instance streams.
 
 ## Requirements
@@ -254,7 +253,7 @@ Node ports use stable `StringName` IDs. Runtime values are checked against decla
 | **Placement** | Random Placement, Grid Placement, Poisson Placement, Along Edge Random, Along Edge Even, Along Edge Continuous, Add Single Item, Merge Placement |
 | **Transform** | Edit Transform, Edit Position, Edit Rotation, Edit Scale, Randomize Transforms, Randomize Rotation, Array, Look At, Snap Transforms, Relax Position, Clusterize by Mask, Project On Colliders |
 | **Filter** | Remove Outside, Remove Random |
-| **Data** | Random Color, Random Custom Data, Proxy Graph |
+| **Data** | Random Color, Set Color, Random Custom Data |
 | **Output** | Final Output |
 
 ## Demo and tests

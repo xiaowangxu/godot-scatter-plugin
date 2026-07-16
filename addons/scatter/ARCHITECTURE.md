@@ -15,7 +15,7 @@ The current architecture follows these boundaries:
 3. Generation produces a `ScatterBuildResult`. Presentation is a separate step that writes the result into a `MultiMesh`.
 4. The Recipe file, in-memory Working Graph, and generated MultiMesh are three independent states.
 5. Graph ports use stable `StringName` IDs. Display labels are not part of the serialization protocol.
-6. Each execution-plan node is evaluated at most once during a Build. Recursive Proxy evaluation shares one evaluation session.
+6. Each execution-plan node is evaluated at most once during a Build.
 7. A failed Build never overwrites the Target's current MultiMesh buffer.
 
 ---
@@ -108,7 +108,7 @@ flowchart TD
 | `ScatterEditorContext` | Unified Property, Structure, and Layout change notifications |
 | `ScatterRecipeEditSession` | Source Graph, Working Graph, dirty state, scene ownership, and explicit saving |
 | `ScatterRecipeLinkController` | Recipe attachment/detachment and their Undo/Redo actions |
-| `ScatterBuildCoordinator` | Proxy dependency order, Generation submission, Presentation, and batch sequencing |
+| `ScatterBuildCoordinator` | Generation submission, completion handling, and main-thread Presentation |
 | `ScatterGizmoPlugin` | 3D preview of the selected node and handle forwarding |
 | `ScatterViewportToolHost` | Activation, input forwarding, toolbar state, and destruction of Paint/Path tools |
 
@@ -456,16 +456,7 @@ flowchart LR
 
 ### 10.1 Build Coordinator
 
-`ScatterBuildCoordinator.build(target, scene_root)`:
-
-1. Scans the scene tree for `MultiMeshInstance3D` nodes.
-2. Reads enabled Proxy nodes with `auto_rebuild` active.
-3. Builds a `source target ID → dependents[]` index.
-4. Creates an ordered BuildBatch by breadth-first traversal from the requested Target.
-5. Submits one Target to the scheduler at a time.
-6. Submits the next dependent only after Generation and Presentation finish for the previous Target.
-
-The dependency tree is scanned once per batch. A visited set prevents dependency cycles from growing the queue forever. Actual Proxy evaluation cycles are detected again by `EvaluationSession` and reported as diagnostics.
+`ScatterBuildCoordinator.build(target, mark_unsaved)` resolves the Target's current Working Graph, creates one `ScatterBuildRequest`, and submits it to the configured scheduler. The completion callback remains the only path to Presentation: successful results are written through `ScatterMultiMeshWriter` on the editor thread, while failed results leave the current MultiMesh untouched.
 
 ### 10.2 Scheduler and Backend
 
@@ -587,10 +578,9 @@ Therefore identical graph seed, node ID, and parameters produce identical output
 
 ## 13. EvaluationSession, Diagnostics, and Cache
 
-One `ScatterEvaluationSession` is shared by a root Build and all recursive Proxy Builds:
+One `ScatterEvaluationSession` owns the cache and diagnostics for a Build execution:
 
 ```text
-visited_targets
 cache
 evaluation_cache_hits
 diagnostics
@@ -598,11 +588,7 @@ execution_id
 output counts
 ```
 
-### 13.1 Proxy Cycle Detection
-
-Before evaluating a Target, the service calls `begin_target(instance_id)`. If the ID is already in `visited_targets`, it returns a `proxy_cycle` Error. It calls `end_target()` when leaving.
-
-### 13.2 Default Cache
+### 13.1 Default Cache
 
 `ScatterMemoryEvaluationCache` uses this key:
 
@@ -610,9 +596,9 @@ Before evaluating a Target, the service calls `begin_target(instance_id)`. If th
 execution_id : graph instance ID : target instance ID : node ID
 ```
 
-A new root Build increments the execution ID and clears the default memory cache. This prevents stale Node, Target, or physics-query results from crossing Builds. Proxy recursion within one root Build shares the execution ID and can reuse intermediate output.
+A new Build increments the execution ID and clears the default memory cache. This prevents stale Node, Target, or physics-query results from crossing Build executions.
 
-### 13.3 Future Persistent Content Cache
+### 13.2 Future Persistent Content Cache
 
 `ScatterEvaluationCache` is the replacement boundary. A stable cross-Build key must include at least:
 
@@ -630,7 +616,7 @@ Consistent hashing can assign an already-stable content key to cache shards. A G
 
 The cache owns its output objects. `ScatterBuildService` copies Final Instances before returning so Presentation cannot mutate a cache entry.
 
-### 13.4 Diagnostics
+### 13.3 Diagnostics
 
 `ScatterDiagnostic` contains severity, stable code, node ID, message, and a details dictionary. A Warning may accompany a partial result, such as instance-limit truncation. An Error fails the Build and prevents MultiMesh Presentation.
 
@@ -806,25 +792,7 @@ It writes directly by offset without a temporary Array per instance. Before writ
 
 ---
 
-## 18. Proxy Graph Data Flow
-
-`ScatterProxyNode` lets one Target consume the Scatter output of another `MultiMeshInstance3D`.
-
-Evaluation:
-
-1. Resolves the source Target through `NodePath`.
-2. Uses `ScatterGraphResolver` to obtain its Working Graph or attached graph.
-3. Recursively Builds the source with the same `EvaluationSession` and `GenerationBackend`.
-4. Detects Proxy cycles through visited Target IDs.
-5. Computes the `source local → target local` transform.
-6. Transforms every source instance.
-7. Preserves color/custom data and appends the result.
-
-`BuildCoordinator` also scans Proxies with `auto_rebuild` enabled. After a source is manually built, dependent Targets rebuild in dependency order.
-
----
-
-## 19. Gizmo and Viewport-Tool Data Flow
+## 18. Gizmo and Viewport-Tool Data Flow
 
 ```text
 GraphNode selected
@@ -838,7 +806,7 @@ plugin.gd
     └─ ViewportToolHost.select
 ```
 
-### 19.1 Generic Preview
+### 18.1 Generic Preview
 
 `ScatterDefaultEditorExtension` calls `compile_node()` for the selected node and its ancestors:
 
@@ -848,7 +816,7 @@ plugin.gd
 
 The Gizmo host does not hard-code concrete node types. Registered editor extensions provide node-specific behavior.
 
-### 19.2 Path Tool
+### 18.2 Path Tool
 
 The Path Tool supports Edit, Create, and Delete:
 
@@ -857,13 +825,13 @@ The Path Tool supports Edit, Create, and Delete:
 - always store points in Target-local space;
 - route Closed, Add, and Delete through `UndoService`.
 
-### 19.3 Paint Tool
+### 18.3 Paint Tool
 
 The Paint Tool raycasts with the graph collision mask and creates `ScatterPaintStroke` values. Erase, Radius, Clear Layer, and stroke edits update the Working Graph. The unified `PROPERTY` flow handles dirty state, Gizmo refresh, and optional Auto Build.
 
 ---
 
-## 20. Extension Mechanism
+## 19. Extension Mechanism
 
 An external addon registers a node with up to three layers:
 
@@ -875,15 +843,15 @@ ScatterExtensionRegistry.register_node(
 )
 ```
 
-### 20.1 Model
+### 19.1 Model
 
 Extend `ScatterNode` and provide a stable type ID, caption/category/color, ports, and `evaluate_value()` or multi-output `evaluate()`. Validation, seed, disabled, and dynamic-port behaviors are optional.
 
-### 20.2 View
+### 19.2 View
 
 Reuse the exported-property form in `ScatterBuiltinNodeView`, or extend `ScatterNodeView` for a fully custom layout.
 
-### 20.3 Editor Extension
+### 19.3 Editor Extension
 
 `ScatterNodeEditorExtension` can provide Gizmo drawing, a viewport tool, handle interactions, and selected/deselected hooks.
 
@@ -891,7 +859,7 @@ Custom value types are registered with `ScatterValueTypeRegistry.register_type()
 
 ---
 
-## 21. Multithreading Boundary
+## 20. Multithreading Boundary
 
 Worker-thread execution is not enabled in this version, but the interfaces are separated.
 
@@ -902,8 +870,7 @@ A threaded scheduler must obey these rules:
 3. `ScatterMultiMeshWriter`, SceneTree, EditorPlugin, UI, and Gizmo APIs are main-thread-only.
 4. Requests need revisions; stale results cannot overwrite newer edits.
 5. Shutdown must cancel or ignore unfinished work.
-6. Proxy recursion must use the same backend and session.
-7. Nodes using `PhysicsDirectSpaceState`, `Node`, or `Resource` data need a thread-safe snapshot or a main-thread phase.
+6. Nodes using `PhysicsDirectSpaceState`, `Node`, or `Resource` data need a thread-safe snapshot or a main-thread phase.
 
 Intended future flow:
 
@@ -919,23 +886,23 @@ Do not move the current `ScatterBuildRequest`, which holds live Scene Nodes, dir
 
 ---
 
-## 22. Coding and Maintenance Rules
+## 21. Coding and Maintenance Rules
 
-### 22.1 Classes and Files
+### 21.1 Classes and Files
 
 - One primary `class_name` maps to one snake_case `.gd` file.
 - Core classes do not reference editor classes.
 - External extensions should depend on `class_name` and registry APIs, not internal paths.
 - Move Godot `.uid` files with scripts to preserve `.tres` and `.tscn` references.
 
-### 22.2 IDs
+### 21.2 IDs
 
 - Node type, value type, and port IDs use `StringName`.
 - IDs are persistent protocol values; UI labels may change.
 - Published IDs should not change for cosmetic reasons.
 - `node_id` is unique only within one graph.
 
-### 22.3 Ownership
+### 21.3 Ownership
 
 - EditSession owns the Working Graph.
 - Evaluation Cache owns cached outputs.
@@ -943,14 +910,14 @@ Do not move the current `ScatterBuildRequest`, which holds live Scene Nodes, dir
 - Transform/filter nodes modify copies, not shared upstream Instances.
 - The writer may normalize a successful result, but never modifies the Target after failure.
 
-### 22.4 Errors
+### 21.4 Errors
 
 - Recoverable partial-output conditions use Warning.
 - Structural, type, cycle, and output-protocol failures use Error.
 - Diagnostics should include a stable code, node ID, and details.
 - UI shows the first error; the full array remains available to tests and a future diagnostics panel.
 
-### 22.5 Performance
+### 21.5 Performance
 
 - Avoid temporary Array/Dictionary allocation inside instance loops.
 - Compute batch constants outside hot loops.
@@ -961,7 +928,7 @@ Do not move the current `ScatterBuildRequest`, which holds live Scene Nodes, dir
 
 ---
 
-## 23. Tests and Verification
+## 22. Tests and Verification
 
 Recommended order:
 
@@ -982,14 +949,14 @@ Coverage includes:
 - Recipe defaults and explicit saving;
 - GraphEdit, Undo, Sidebar, Path/Paint, and session lifecycle;
 - Path Extrude;
-- BuildCoordinator, synchronous/delayed schedulers, and Proxy dependents;
+- BuildCoordinator and synchronous/delayed schedulers;
 - Demo Recipe loading and real Builds.
 
 The test runner treats `SCRIPT ERROR`, assertions, and `ERROR:` output as failures in addition to checking process exit codes.
 
 ---
 
-## 24. Common Modification Entry Points
+## 23. Common Modification Entry Points
 
 | Requirement | Preferred location |
 | --- | --- |
@@ -1009,7 +976,7 @@ The test runner treats `SCRIPT ERROR`, assertions, and `ERROR:` output as failur
 
 ---
 
-## 25. Complete User-Action Example
+## 24. Complete User-Action Example
 
 Changing Random Placement amount with Auto Build enabled follows this path:
 
@@ -1034,8 +1001,7 @@ notify_model_changed(PROPERTY)
       plugin.gd._build_current
           ↓
       ScatterBuildCoordinator
-          ├─ build Proxy-dependent index
-          └─ scheduler.submit(BuildRequest)
+          ↓ scheduler.submit(BuildRequest)
                 ↓
             GenerationBackend
                 ├─ GraphIndex
@@ -1053,4 +1019,3 @@ notify_model_changed(PROPERTY)
 ```
 
 This path summarizes the architecture's main objective: model editing, editor state, generation, and scene presentation remain separate layers connected through stable, testable interfaces.
-

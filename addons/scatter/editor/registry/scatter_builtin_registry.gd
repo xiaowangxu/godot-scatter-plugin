@@ -43,7 +43,6 @@ const ENTRIES := [
 	[preload("res://addons/scatter/core/nodes/transform/scatter_project_node.gd"), GenericView],
 	[preload("res://addons/scatter/core/nodes/filter/scatter_remove_outside_node.gd"), GenericView],
 	[preload("res://addons/scatter/core/nodes/filter/scatter_remove_random_node.gd"), GenericView],
-	[preload("res://addons/scatter/core/nodes/data/scatter_proxy_node.gd"), GenericView],
 	[preload("res://addons/scatter/core/nodes/data/scatter_random_color_node.gd"), GenericView],
 	[preload("res://addons/scatter/core/nodes/data/scatter_set_color_node.gd"), GenericView],
 	[preload("res://addons/scatter/core/nodes/data/scatter_random_custom_data_node.gd"), GenericView],

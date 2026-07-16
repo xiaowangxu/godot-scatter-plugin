@@ -39,51 +39,39 @@ class ManualScheduler:
 
 func _init() -> void:
 	ScatterBuiltinRegistry.register_all()
-	var scene_root := Node3D.new()
-	root.add_child(scene_root)
-	var source := MultiMeshInstance3D.new()
-	source.name = "Source"
-	scene_root.add_child(source)
-	var dependent := MultiMeshInstance3D.new()
-	dependent.name = "Dependent"
-	scene_root.add_child(dependent)
+	var target := MultiMeshInstance3D.new()
+	target.name = "Target"
+	root.add_child(target)
 
-	var source_graph := ScatterGraphFactory.create_default()
-	var dependent_graph := ScatterGraph.new()
-	var proxy := dependent_graph.add_node(ScatterProxyNode.new()) as ScatterProxyNode
-	proxy.scatter_node = NodePath("../Source")
-	var output := dependent_graph.add_node(ScatterFinalOutputNode.new())
-	assert(dependent_graph.connect_nodes(proxy.node_id, &"instances", output.node_id, &"instances") != null)
+	var graph := ScatterGraphFactory.create_default()
 
 	var provider := GraphProvider.new()
-	provider.graphs[source.get_instance_id()] = source_graph
-	provider.graphs[dependent.get_instance_id()] = dependent_graph
+	provider.graphs[target.get_instance_id()] = graph
 	var generator := GeneratorCounter.new()
 	var coordinator := ScatterBuildCoordinator.new(provider.resolve, ScatterInlineBuildScheduler.new(generator))
 	var built: Array[String] = []
-	coordinator.build_succeeded.connect(func(target: MultiMeshInstance3D, _result: ScatterBuildResult, _mark_unsaved: bool):
-		built.append(target.name)
+	var mark_values: Array[bool] = []
+	coordinator.build_succeeded.connect(func(built_target: MultiMeshInstance3D, _result: ScatterBuildResult, mark_unsaved: bool):
+		built.append(built_target.name)
+		mark_values.append(mark_unsaved)
 	)
-	coordinator.build(source, scene_root)
+	coordinator.build(target, false)
 
-	assert(built == ["Source", "Dependent"])
-	assert(generator.calls == 3, "Source generation is reused by the dependent proxy build path")
-	assert(source.multimesh != null and source.multimesh.instance_count > 0)
-	assert(dependent.multimesh != null and dependent.multimesh.instance_count == source.multimesh.instance_count)
+	assert(built == ["Target"])
+	assert(mark_values == [false])
+	assert(generator.calls == 1)
+	assert(target.multimesh != null and target.multimesh.instance_count > 0)
 
 	# A scheduler may finish generation later. Presentation must not happen until
-	# its completion callback, and dependent jobs remain ordered behind sources.
-	source.multimesh = null
-	dependent.multimesh = null
+	# its completion callback.
+	target.multimesh = null
 	var manual := ManualScheduler.new(generator)
 	var deferred_coordinator := ScatterBuildCoordinator.new(provider.resolve, manual)
-	deferred_coordinator.build(source, scene_root)
-	assert(manual.requests.size() == 1 and source.multimesh == null)
+	deferred_coordinator.build(target)
+	assert(manual.requests.size() == 1 and target.multimesh == null)
 	manual.complete_next()
-	assert(source.multimesh != null and dependent.multimesh == null)
-	assert(manual.requests.size() == 1)
-	manual.complete_next()
-	assert(dependent.multimesh != null)
-	scene_root.free()
+	assert(target.multimesh != null)
+	assert(manual.requests.is_empty())
+	target.free()
 	print("Scatter build coordinator test passed")
 	quit()

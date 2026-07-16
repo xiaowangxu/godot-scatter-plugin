@@ -149,7 +149,7 @@ func _init() -> void:
 		assert(bottom_padding.custom_minimum_size.y == top_padding.custom_minimum_size.y)
 		view_count += 1
 		view.free()
-	assert(view_count == 37)
+	assert(view_count == 36)
 	assert(InspectorScript != null)
 	assert(GizmoScript != null)
 	var gizmo = null

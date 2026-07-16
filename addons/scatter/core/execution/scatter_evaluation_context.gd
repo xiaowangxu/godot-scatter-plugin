@@ -5,8 +5,6 @@ extends RefCounted
 var target: MultiMeshInstance3D
 var graph: ScatterGraph
 var session: ScatterEvaluationSession
-var resolver: ScatterGraphResolver
-var backend: ScatterGenerationBackend
 var maximum_instances := 1_000_000
 
 
@@ -19,16 +17,7 @@ static func create(
 	context.target = p_target
 	context.graph = p_graph
 	context.session = p_session
-	context.resolver = ScatterGraphResolver.new()
 	return context
-
-
-func with_target(p_target: MultiMeshInstance3D, p_graph: ScatterGraph) -> ScatterEvaluationContext:
-	var copy := ScatterEvaluationContext.create(p_target, p_graph, session)
-	copy.maximum_instances = maximum_instances
-	copy.resolver = resolver
-	copy.backend = backend
-	return copy
 
 
 func random_for(node: ScatterNode) -> RandomNumberGenerator:

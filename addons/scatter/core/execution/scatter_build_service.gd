@@ -9,9 +9,8 @@ static func build_target(
 		target: MultiMeshInstance3D,
 		graph: ScatterGraph = null,
 		session: ScatterEvaluationSession = null,
-		resolver: ScatterGraphResolver = null,
 ) -> ScatterBuildResult:
-	var request := ScatterBuildRequest.create(target, graph, session, resolver)
+	var request := ScatterBuildRequest.create(target, graph, session)
 	request.maximum_instances = MAXIMUM_INSTANCES
 	return generate(request)
 
@@ -31,18 +30,13 @@ static func generate(request: ScatterBuildRequest) -> ScatterBuildResult:
 		request.graph = graph
 	if graph == null:
 		return _failure(session, diagnostic_start, &"graph_missing", "Target has no Scatter graph.")
-	var target_id := target.get_instance_id()
-	if not session.begin_target(target_id):
-		return _failure(session, diagnostic_start, &"proxy_cycle", "Proxy cycle detected.")
+	session.begin_execution()
 	var context := ScatterEvaluationContext.create(target, graph, session)
-	context.resolver = request.resolver if request.resolver != null else ScatterGraphResolver.new()
-	context.backend = request.backend
 	context.maximum_instances = request.maximum_instances
 	var plan := ScatterGraphCompiler.compile(graph)
 	for diagnostic in plan.diagnostics:
 		session.diagnostics.append(diagnostic)
 	var outputs := ScatterGraphEvaluator.execute(plan, context) if not plan.has_errors() else null
-	session.end_target(target_id)
 	var result := _result_with_diagnostics(session, diagnostic_start)
 	if outputs == null or not result.errors.is_empty():
 		result.ok = false

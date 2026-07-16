@@ -20,7 +20,7 @@ func _init() -> void:
 		assert(target.multimesh != null)
 		assert(target.multimesh.instance_count == result.instances.transforms.size())
 		built += 1
-	assert(built == 2)
+	assert(built > 0, "The demo scene must contain at least one buildable Scatter target")
 	scene.free()
 	print("Scatter demo scene test passed")
 	quit()

@@ -124,7 +124,7 @@ func _build_current() -> void:
 
 func _build_target(target: MultiMeshInstance3D, mark_unsaved := true) -> void:
 	if _build_coordinator != null:
-		_build_coordinator.build(target, get_editor_interface().get_edited_scene_root(), mark_unsaved)
+		_build_coordinator.build(target, mark_unsaved)
 
 
 func _build_succeeded(target: MultiMeshInstance3D, result: ScatterBuildResult, mark_unsaved: bool) -> void:

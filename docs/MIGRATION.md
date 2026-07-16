@@ -16,3 +16,5 @@ The refactor preserves public `class_name` APIs and serialized script UIDs, but 
 | `editor/views/<node category>/` | `editor/graph/views/` |
 
 External addons should prefer registered `class_name` types over preloading Scatter's internal files. Custom nodes continue to register through `ScatterExtensionRegistry`.
+
+`ScatterProxyNode` and its scene-target dependency system were removed. Recipes that contain the legacy `proxy` node are not migrated automatically and must be rebuilt without cross-Target graph references.
