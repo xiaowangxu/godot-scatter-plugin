@@ -125,9 +125,14 @@ Graph controller、节点表单、Paint、Path 和图级属性不再各自复制
 
 - `get_input_ports()` / `get_output_ports()`；
 - `get_property_list()`；
-- `@export_range`、`@export_enum`、类型和文件提示。
+- Property type、`hint`、`hint_string` 和 `usage`；
+- `@export_category`、`@export_group`、`@export_subgroup` 的有序布局标记。
 
-因此节点属性范围只定义一次。只有需要特殊运行统计或交互布局的 Final Output 和 Paint Region 保留专用视图。外部插件仍可通过 `ScatterExtensionRegistry.register_node()` 注册完全自定义的视图和 editor extension。
+显式 Category、Group、Subgroup 显示为静态层级标题；前缀用于决定属性归属并从最终标签移除。自动脚本类 Category、空分组、隐藏属性和不支持的类型不会产生标题。真实属性必须同时包含 `PROPERTY_USAGE_EDITOR` 和 `PROPERTY_USAGE_SCRIPT_VARIABLE`；`PROPERTY_USAGE_READ_ONLY` 会保留字段但禁用控件。
+
+通用视图支持 Range 的边界、步长、越界、指数、后缀和角度转换，保留 Enum 的显式值，并支持 String Enum/Suggestion、Flags/Layers、普通/Placeholder/Password/Multiline String、文件/保存/目录选择、无 Alpha Color、Vector 后缀及 NodePath。Array、Dictionary、Resource/Object、Callable/tool button、Property Array 和自定义 Inspector 仍需要专用 View。
+
+因此节点属性布局、范围和值选项只定义一次。只有需要特殊运行统计或交互布局的 Final Output 和 Paint Region 保留专用视图。外部插件仍可通过 `ScatterExtensionRegistry.register_node()` 注册完全自定义的视图和 editor extension。
 
 ## 主要性能修正
 

@@ -5,6 +5,7 @@ const InspectorScript := preload("res://addons/scatter/editor/inspector/scatter_
 const GizmoScript := preload("res://addons/scatter/editor/gizmo/scatter_gizmo_plugin.gd")
 const PaintToolScript := preload("res://addons/scatter/editor/tools/scatter_paint_tool.gd")
 const PathToolScript := preload("res://addons/scatter/editor/tools/scatter_path_tool.gd")
+const PropertyMetadataFixtureScript := preload("res://addons/scatter/tests/unit/scatter_property_metadata_fixture.gd")
 
 
 class CallbackCounter:
@@ -155,6 +156,7 @@ func _init() -> void:
 		view_count += 1
 		view.free()
 	assert(view_count == 36)
+	_test_property_metadata(root)
 	assert(InspectorScript != null)
 	assert(GizmoScript != null)
 	var gizmo = null
@@ -375,6 +377,196 @@ func _view_has_label(view: ScatterNodeView, text: String) -> bool:
 		if child is Label and child.text == text:
 			return true
 	return false
+
+
+func _test_property_metadata(tree_root: Node) -> void:
+	var fixture = PropertyMetadataFixtureScript.new()
+	var context := ScatterEditorContext.new()
+	context.graph = ScatterGraph.new()
+	var view := ScatterBuiltinNodeView.new()
+	tree_root.add_child(view)
+	view.bind_model(fixture, context)
+	context.undo = ScatterUndoService.new(null, fixture, view.sync_from_model)
+
+	_assert_property_sections(view, [
+		[&"category", "Metadata"],
+		[&"group", "Measurements"],
+		[&"subgroup", "Choices"],
+		[&"category", "Advanced"],
+		[&"group", "Flags"],
+		[&"group", "Text"],
+		[&"group", "Display"],
+	])
+	assert(not _property_section_labels(view).has("Empty"))
+	assert(not _property_section_labels(view).has("scatter_property_metadata_fixture.gd"))
+
+	var distance := _property_control(view, &"metadata_distance") as SpinBox
+	assert(distance != null)
+	assert(_property_label(distance) == "Distance")
+	assert(is_equal_approx(distance.min_value, 0.1))
+	assert(is_equal_approx(distance.max_value, 100.0))
+	assert(is_equal_approx(distance.step, 0.5))
+	assert(distance.allow_lesser and distance.allow_greater and distance.exp_edit)
+	assert(distance.suffix == "m")
+
+	var angle := _property_control(view, &"metadata_angle") as SpinBox
+	assert(angle != null and is_equal_approx(angle.value, 90.0))
+	assert(angle.suffix == "°")
+	angle.value_changed.emit(180.0)
+	assert(is_equal_approx(fixture.metadata_angle, PI))
+
+	var integer_enum := _property_control(view, &"metadata_choice_integer") as OptionButton
+	assert(integer_enum != null and integer_enum.selected == 1)
+	assert(_property_label(integer_enum) == "Integer")
+	integer_enum.item_selected.emit(0)
+	assert(fixture.metadata_choice_integer == 10)
+	var string_enum := _property_control(view, &"metadata_choice_string") as OptionButton
+	assert(string_enum != null and string_enum.selected == 1)
+	string_enum.item_selected.emit(0)
+	assert(fixture.metadata_choice_string == "Alpha")
+
+	var plain_text := _property_control(view, &"plain_text") as LineEdit
+	assert(plain_text != null and plain_text.get_parent().get_child_count() == 2)
+	var bitmask := _property_control(view, &"flags") as MenuButton
+	assert(bitmask != null and bitmask.get_popup().item_count == 2)
+	assert(bitmask.get_popup().is_item_checked(0))
+	assert(bitmask.get_popup().is_item_checked(1))
+	bitmask.get_popup().id_pressed.emit(1)
+	assert(fixture.flags == 1)
+	assert(not bitmask.get_popup().is_item_checked(1))
+
+	var suggestion := _property_control(view, &"suggestion") as LineEdit
+	assert(suggestion != null)
+	var suggestion_menu := suggestion.get_parent().get_child(1) as MenuButton
+	suggestion_menu.get_popup().id_pressed.emit(1)
+	assert(fixture.suggestion == "Second")
+	var placeholder := _property_control(view, &"placeholder") as LineEdit
+	assert(placeholder.placeholder_text == "Enter a label")
+	var multiline := _property_control(view, &"multiline") as TextEdit
+	assert(multiline != null and multiline.text.contains("Line two"))
+	var password := _property_control(view, &"password") as LineEdit
+	assert(password != null and password.secret)
+
+	_assert_file_control(view, &"file_path", FileDialog.FILE_MODE_OPEN_FILE, ["*.png", "*.jpg"])
+	_assert_file_control(view, &"directory_path", FileDialog.FILE_MODE_OPEN_DIR, [])
+	_assert_file_control(view, &"save_path", FileDialog.FILE_MODE_SAVE_FILE, ["*.tres"])
+	var readonly := _property_control(view, &"readonly_distance") as SpinBox
+	assert(readonly != null and not readonly.editable and readonly.suffix == "m")
+	var opaque_color := _property_control(view, &"opaque_color") as ColorPickerButton
+	assert(opaque_color != null and not opaque_color.edit_alpha)
+	var vector_box := _property_control(view, &"vector_distance") as HBoxContainer
+	assert(vector_box != null)
+	for child in vector_box.get_children():
+		assert(child is SpinBox and child.suffix == "m")
+
+	fixture.metadata_distance = 7.6
+	fixture.metadata_angle = PI / 4.0
+	fixture.flags = 4
+	fixture.multiline = "Updated"
+	view.sync_from_model()
+	assert(is_equal_approx(distance.value, 7.6))
+	assert(is_equal_approx(angle.value, 45.0))
+	assert(not bitmask.get_popup().is_item_checked(0))
+	assert(bitmask.get_popup().is_item_checked(1))
+	assert(multiline.text == "Updated")
+	view.free()
+
+	var array_view := _production_node_view(tree_root, ScatterArrayNode.new())
+	_assert_property_sections(array_view, [
+		[&"category", "Copies"],
+		[&"group", "Count"],
+		[&"group", "Position"],
+		[&"group", "Rotation"],
+		[&"subgroup", "Pivot"],
+		[&"group", "Scale"],
+	])
+	array_view.free()
+	var project_view := _production_node_view(tree_root, ScatterProjectNode.new())
+	_assert_property_sections(project_view, [
+		[&"category", "Projection"],
+		[&"group", "Ray"],
+		[&"group", "Collision"],
+		[&"group", "Result"],
+	])
+	var collision_mask := _property_control(project_view, &"collision_mask") as MenuButton
+	assert(collision_mask != null and collision_mask.get_popup().item_count == 32)
+	assert(collision_mask.get_popup().is_item_checked(0))
+	project_view.free()
+	var cluster_view := _production_node_view(tree_root, ScatterClusterizeNode.new())
+	_assert_property_sections(cluster_view, [
+		[&"category", "Mask"],
+		[&"group", "Mapping"],
+		[&"group", "Filtering"],
+		[&"group", "Output"],
+	])
+	cluster_view.free()
+
+
+func _production_node_view(tree_root: Node, node: ScatterNode) -> ScatterBuiltinNodeView:
+	var context := ScatterEditorContext.new()
+	context.graph = ScatterGraph.new()
+	context.undo = ScatterUndoService.new()
+	var view := ScatterBuiltinNodeView.new()
+	tree_root.add_child(view)
+	view.bind_model(node, context)
+	return view
+
+
+func _assert_property_sections(view: ScatterNodeView, expected: Array) -> void:
+	var actual: Array = []
+	for child in view.get_children():
+		if child.has_meta(&"scatter_property_section"):
+			actual.append([
+				child.get_meta(&"scatter_property_section"),
+				child.get_meta(&"scatter_property_label"),
+			])
+	assert(actual == expected, "Unexpected property sections: %s" % [actual])
+
+
+func _property_section_labels(view: ScatterNodeView) -> PackedStringArray:
+	var result := PackedStringArray()
+	for child in view.get_children():
+		if child.has_meta(&"scatter_property_label"):
+			result.append(String(child.get_meta(&"scatter_property_label")))
+	return result
+
+
+func _property_control(view: ScatterNodeView, property: StringName) -> Control:
+	return _find_property_control(view, property)
+
+
+func _find_property_control(parent: Node, property: StringName) -> Control:
+	for child in parent.get_children():
+		if child is Control and child.get_meta(&"scatter_property", &"") == property:
+			return child
+		var nested := _find_property_control(child, property)
+		if nested != null:
+			return nested
+	return null
+
+
+func _property_label(control: Control) -> String:
+	var row := control.get_parent()
+	while row != null and row.get_parent() is not ScatterNodeView:
+		row = row.get_parent()
+	if row == null or row.get_child_count() == 0 or row.get_child(0) is not Label:
+		return ""
+	return (row.get_child(0) as Label).text
+
+
+func _assert_file_control(
+		view: ScatterNodeView,
+		property: StringName,
+		file_mode: int,
+		filters: Array,
+) -> void:
+	var control := _property_control(view, property) as LineEdit
+	assert(control != null)
+	var browse := control.get_parent().get_child(1) as Button
+	assert(browse != null and browse.has_meta(&"scatter_file_options"))
+	var options: Dictionary = browse.get_meta(&"scatter_file_options")
+	assert(int(options.file_mode) == file_mode)
+	assert(Array(options.filters) == filters)
 
 
 func _test_scene_recipe_session_lifecycle(panel: ScatterPanel) -> void:

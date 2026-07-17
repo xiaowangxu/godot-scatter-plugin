@@ -2,14 +2,20 @@
 class_name ScatterProjectNode
 extends ScatterPlacementNode
 
+@export_category("Projection")
+@export_group("Ray")
 @export var ray_direction := Vector3.DOWN
 @export_range(0.0, 1000000.0, 0.1) var ray_length := 10.0
 @export var ray_offset := 1.0
+
+@export_group("Collision")
+@export_flags_3d_physics var collision_mask := 1
+@export_flags_3d_physics var exclude_mask := 0
+
+@export_group("Result")
 @export var remove_points_on_miss := true
 @export var align_with_collision_normal := false
 @export_range(0.0, 90.0, 1.0) var max_slope := 90.0
-@export_flags_3d_physics var collision_mask := 1
-@export_flags_3d_physics var exclude_mask := 0
 
 
 func get_type_id() -> StringName:

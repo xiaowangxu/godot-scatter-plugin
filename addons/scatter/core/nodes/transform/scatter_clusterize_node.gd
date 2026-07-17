@@ -2,13 +2,19 @@
 class_name ScatterClusterizeNode
 extends ScatterPlacementNode
 
+@export_category("Mask")
+@export_group("Mapping")
 @export_file("*.png", "*.jpg", "*.jpeg", "*.webp", "*.tres", "*.res") var mask := ""
 @export var mask_rotation := 0.0
 @export var mask_offset := Vector2.ZERO
 @export var mask_scale := Vector2.ONE
 @export_range(0.001, 1000000.0, 1.0) var pixel_to_unit_ratio := 64.0
+
+@export_group("Filtering")
 @export_range(0.0, 1.0, 0.01) var remove_below := 0.1
 @export_range(0.0, 1.0, 0.01) var remove_above := 1.0
+
+@export_group("Output")
 @export var scale_transforms := true
 
 

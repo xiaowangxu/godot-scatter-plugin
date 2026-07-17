@@ -63,19 +63,28 @@ func sync_from_model() -> void:
 			"bool":
 				(binding.control as BaseButton).button_pressed = bool(value)
 			"number":
-				(binding.control as SpinBox).value = float(value)
+				(binding.control as SpinBox).value = _number_to_display(float(value), binding.get("options", {}))
 			"vector2", "vector3":
 				var controls: Array = binding.controls
+				var options: Dictionary = binding.get("options", {})
 				for axis in controls.size():
-					(controls[axis] as SpinBox).value = value[axis]
+					(controls[axis] as SpinBox).value = _number_to_display(value[axis], options)
 			"enum":
-				(binding.control as OptionButton).select(int(value))
+				var values: Array = binding.get("values", [])
+				(binding.control as OptionButton).select(values.find(value) if not values.is_empty() else int(value))
+			"bitmask":
+				_sync_bitmask_control(binding.control, int(value), binding.items)
 			"color":
-				(binding.control as ColorPickerButton).color = value
+				var color: Color = value
+				if binding.get("force_opaque", false):
+					color.a = 1.0
+				(binding.control as ColorPickerButton).color = color
 			"path":
 				(binding.control as LineEdit).text = _path_to_text(value)
 			"text", "node_path":
 				(binding.control as LineEdit).text = String(value)
+			"multiline":
+				(binding.control as TextEdit).text = String(value)
 	_syncing = false
 	update_runtime_stats()
 
@@ -174,6 +183,7 @@ func add_bool_property(property: StringName, label_text: String, tooltip := "") 
 	control.toggled.connect(_bool_changed.bind(property, label_text))
 	_add_property_row(label_text, tooltip, control)
 	_bindings.append({"property": property, "kind": "bool", "control": control})
+	_tag_property_control(control, property, &"bool")
 	return control
 
 
@@ -185,25 +195,46 @@ func add_number_property(
 		step: float,
 		integer := false,
 		tooltip := "",
+		options: Dictionary = {},
 	) -> SpinBox:
 	var control := SpinBox.new()
 	control.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	control.min_value = minimum
 	control.max_value = maximum
 	control.step = step
-	control.value = float(model.get(property))
-	control.value_changed.connect(_number_changed.bind(property, label_text, integer))
+	control.allow_lesser = options.get("allow_lesser", false)
+	control.allow_greater = options.get("allow_greater", false)
+	control.exp_edit = options.get("exp_edit", false)
+	control.suffix = options.get("suffix", "")
+	control.value = _number_to_display(float(model.get(property)), options)
+	control.value_changed.connect(_number_changed.bind(property, label_text, integer, options))
 	_add_property_row(label_text, tooltip, control)
-	_bindings.append({"property": property, "kind": "number", "control": control})
+	_bindings.append({
+		"property": property,
+		"kind": "number",
+		"control": control,
+		"options": options,
+	})
+	_tag_property_control(control, property, &"number")
 	return control
 
 
-func add_vector2_property(property: StringName, label_text: String, tooltip := "") -> HBoxContainer:
-	return _add_vector_property(property, label_text, 2, tooltip)
+func add_vector2_property(
+		property: StringName,
+		label_text: String,
+		tooltip := "",
+		options: Dictionary = {},
+) -> HBoxContainer:
+	return _add_vector_property(property, label_text, 2, tooltip, options)
 
 
-func add_vector3_property(property: StringName, label_text: String, tooltip := "") -> HBoxContainer:
-	return _add_vector_property(property, label_text, 3, tooltip)
+func add_vector3_property(
+		property: StringName,
+		label_text: String,
+		tooltip := "",
+		options: Dictionary = {},
+) -> HBoxContainer:
+	return _add_vector_property(property, label_text, 3, tooltip, options)
 
 
 func add_enum_property(
@@ -211,25 +242,51 @@ func add_enum_property(
 		label_text: String,
 		items: PackedStringArray,
 		tooltip := "",
+		values: Array = [],
 	) -> OptionButton:
 	var control := OptionButton.new()
 	control.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	for item in items:
 		control.add_item(tr(item))
-	control.select(int(model.get(property)))
-	control.item_selected.connect(_enum_changed.bind(property, label_text))
+	var resolved_values := values.duplicate()
+	if resolved_values.is_empty():
+		for index in items.size():
+			resolved_values.append(index)
+	control.select(resolved_values.find(model.get(property)))
+	control.item_selected.connect(_enum_changed.bind(property, label_text, resolved_values))
 	_add_property_row(label_text, tooltip, control)
-	_bindings.append({"property": property, "kind": "enum", "control": control})
+	_bindings.append({
+		"property": property,
+		"kind": "enum",
+		"control": control,
+		"values": resolved_values,
+	})
+	_tag_property_control(control, property, &"enum")
 	return control
 
 
-func add_color_property(property: StringName, label_text: String, tooltip := "") -> ColorPickerButton:
+func add_color_property(
+		property: StringName,
+		label_text: String,
+		tooltip := "",
+		force_opaque := false,
+) -> ColorPickerButton:
 	var control := ColorPickerButton.new()
-	control.color = model.get(property)
+	var color: Color = model.get(property)
+	if force_opaque:
+		color.a = 1.0
+	control.color = color
+	control.edit_alpha = not force_opaque
 	control.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	control.color_changed.connect(_color_changed.bind(property, label_text))
+	control.color_changed.connect(_color_changed.bind(property, label_text, force_opaque))
 	_add_property_row(label_text, tooltip, control)
-	_bindings.append({"property": property, "kind": "color", "control": control})
+	_bindings.append({
+		"property": property,
+		"kind": "color",
+		"control": control,
+		"force_opaque": force_opaque,
+	})
+	_tag_property_control(control, property, &"color")
 	return control
 
 
@@ -237,13 +294,85 @@ func add_path_property(property: StringName, label_text: String, tooltip := "") 
 	var control := _add_line_edit(property, label_text, tooltip)
 	control.text = _path_to_text(model.get(property))
 	_bindings.append({"property": property, "kind": "path", "control": control})
+	_tag_property_control(control, property, &"path")
 	return control
 
 
-func add_file_property(property: StringName, label_text: String, tooltip := "") -> LineEdit:
+func add_text_property(
+		property: StringName,
+		label_text: String,
+		tooltip := "",
+		options: Dictionary = {},
+) -> LineEdit:
 	var control := _add_line_edit(property, label_text, tooltip)
 	control.text = String(model.get(property))
+	control.placeholder_text = options.get("placeholder", "")
+	control.secret = options.get("secret", false)
 	_bindings.append({"property": property, "kind": "text", "control": control})
+	_tag_property_control(control, property, &"text")
+	return control
+
+
+func add_suggestion_property(
+		property: StringName,
+		label_text: String,
+		suggestions: PackedStringArray,
+		tooltip := "",
+) -> LineEdit:
+	var row := HBoxContainer.new()
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var control := _make_line_edit(property, label_text)
+	control.text = String(model.get(property))
+	control.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(control)
+	var menu := MenuButton.new()
+	menu.text = tr("Choose")
+	menu.tooltip_text = tr("Choose a suggested value")
+	for index in suggestions.size():
+		menu.get_popup().add_item(tr(suggestions[index]), index)
+	menu.get_popup().id_pressed.connect(
+		_suggestion_selected.bind(control, property, label_text, suggestions),
+	)
+	row.add_child(menu)
+	_add_property_row(label_text, tooltip, row)
+	_bindings.append({"property": property, "kind": "text", "control": control})
+	_tag_property_control(control, property, &"suggestion")
+	return control
+
+
+func add_multiline_property(property: StringName, label_text: String, tooltip := "") -> TextEdit:
+	var control := TextEdit.new()
+	control.text = String(model.get(property))
+	control.custom_minimum_size.y = 72.0
+	control.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	control.focus_exited.connect(_multiline_focus_exited.bind(control, property, label_text))
+	_add_property_row(label_text, tooltip, control)
+	_bindings.append({"property": property, "kind": "multiline", "control": control})
+	_tag_property_control(control, property, &"multiline")
+	return control
+
+
+func add_file_property(
+		property: StringName,
+		label_text: String,
+		tooltip := "",
+		options: Dictionary = {},
+) -> LineEdit:
+	var row := HBoxContainer.new()
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var control := _make_line_edit(property, label_text)
+	control.text = String(model.get(property))
+	control.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(control)
+	var browse := Button.new()
+	browse.text = "..."
+	browse.tooltip_text = tr("Browse")
+	browse.set_meta(&"scatter_file_options", options)
+	browse.pressed.connect(_browse_path.bind(control, property, label_text, options))
+	row.add_child(browse)
+	_add_property_row(label_text, tooltip, row)
+	_bindings.append({"property": property, "kind": "text", "control": control})
+	_tag_property_control(control, property, &"file")
 	return control
 
 
@@ -251,7 +380,59 @@ func add_node_path_property(property: StringName, label_text: String, tooltip :=
 	var control := _add_line_edit(property, label_text, tooltip)
 	control.text = String(model.get(property))
 	_bindings.append({"property": property, "kind": "node_path", "control": control})
+	_tag_property_control(control, property, &"node_path")
 	return control
+
+
+func add_bitmask_property(
+		property: StringName,
+		label_text: String,
+		items: Array[Dictionary],
+		tooltip := "",
+) -> MenuButton:
+	var control := MenuButton.new()
+	control.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var popup := control.get_popup()
+	popup.hide_on_checkable_item_selection = false
+	for index in items.size():
+		popup.add_check_item(tr(String(items[index].label)), index)
+	popup.id_pressed.connect(_bitmask_item_pressed.bind(control, property, label_text, items))
+	_add_property_row(label_text, tooltip, control)
+	_sync_bitmask_control(control, int(model.get(property)), items)
+	_bindings.append({
+		"property": property,
+		"kind": "bitmask",
+		"control": control,
+		"items": items,
+	})
+	_tag_property_control(control, property, &"bitmask")
+	return control
+
+
+func add_property_category(label_text: String) -> Control:
+	return _add_property_section(&"category", label_text, 0.0)
+
+
+func add_property_group(label_text: String) -> Control:
+	return _add_property_section(&"group", label_text, 6.0)
+
+
+func add_property_subgroup(label_text: String) -> Control:
+	return _add_property_section(&"subgroup", label_text, 18.0)
+
+
+func set_property_control_editable(control: Control, editable: bool) -> void:
+	if control is SpinBox:
+		control.editable = editable
+	elif control is LineEdit:
+		control.editable = editable
+	elif control is TextEdit:
+		control.editable = editable
+	elif control is BaseButton:
+		control.disabled = not editable
+	for child in control.get_children():
+		if child is Control:
+			set_property_control_editable(child, editable)
 
 
 func _add_seed_controls() -> void:
@@ -281,6 +462,7 @@ func _add_vector_property(
 		label_text: String,
 		count: int,
 		tooltip: String,
+		options: Dictionary,
 	) -> HBoxContainer:
 	var box := HBoxContainer.new()
 	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -293,9 +475,12 @@ func _add_vector_property(
 		control.min_value = -1000000.0
 		control.max_value = 1000000.0
 		control.step = 0.05
-		control.value = value[axis]
+		control.allow_lesser = true
+		control.allow_greater = true
+		control.suffix = options.get("suffix", "")
+		control.value = _number_to_display(value[axis], options)
 		control.prefix = ["X ", "Y ", "Z "][axis]
-		control.value_changed.connect(_vector_changed.bind(property, label_text, axis, count))
+		control.value_changed.connect(_vector_changed.bind(property, label_text, axis, count, options))
 		box.add_child(control)
 		controls.append(control)
 	_add_property_row(label_text, tooltip, box)
@@ -303,16 +488,23 @@ func _add_vector_property(
 		"property": property,
 		"kind": "vector2" if count == 2 else "vector3",
 		"controls": controls,
+		"options": options,
 	})
+	_tag_property_control(box, property, &"vector2" if count == 2 else &"vector3")
 	return box
 
 
 func _add_line_edit(property: StringName, label_text: String, tooltip: String) -> LineEdit:
+	var control := _make_line_edit(property, label_text)
+	_add_property_row(label_text, tooltip, control)
+	return control
+
+
+func _make_line_edit(property: StringName, label_text: String) -> LineEdit:
 	var control := LineEdit.new()
 	control.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	control.text_submitted.connect(_text_submitted.bind(property, label_text))
 	control.focus_exited.connect(_text_focus_exited.bind(control, property, label_text))
-	_add_property_row(label_text, tooltip, control)
 	return control
 
 
@@ -328,6 +520,32 @@ func _add_property_row(label_text: String, tooltip: String, control: Control) ->
 	add_child(row)
 
 
+func _add_property_section(kind: StringName, label_text: String, indentation: float) -> Control:
+	#var margin := MarginContainer.new()
+	#margin.set_meta(&"scatter_property_section", kind)
+	#margin.set_meta(&"scatter_property_label", label_text)
+	#margin.add_theme_constant_override(&"margin_left", int(indentation))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override(&"separation", 4)
+	var label := Label.new()
+	label.text = tr(label_text)
+	label.set_meta(&"scatter_property_section", kind)
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	row.add_child(label)
+	if kind == &"category":
+		label.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		var separator := HSeparator.new()
+		separator.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(separator)
+	elif kind == &"subgroup":
+		label.modulate.a = 0.78
+	#margin.add_child(row)
+	add_child(row)
+	return row
+
+
 func _enabled_changed(value: bool) -> void:
 	if _syncing:
 		return
@@ -340,13 +558,20 @@ func _bool_changed(value: bool, property: StringName, caption: String) -> void:
 	context.commit_property(model, property, value, tr(caption))
 
 
-func _number_changed(value: float, property: StringName, caption: String, integer: bool) -> void:
+func _number_changed(
+		value: float,
+		property: StringName,
+		caption: String,
+		integer: bool,
+		options: Dictionary = {},
+) -> void:
 	if _syncing:
 		return
+	var stored_value := _number_from_display(value, options)
 	context.commit_property(
 		model,
 		property,
-		int(value) if integer else value,
+		int(stored_value) if integer else stored_value,
 		tr(caption),
 		"",
 		UndoRedo.MERGE_ENDS,
@@ -359,11 +584,12 @@ func _vector_changed(
 		caption: String,
 		axis: int,
 		count: int,
+		options: Dictionary = {},
 ) -> void:
 	if _syncing:
 		return
 	var vector = model.get(property)
-	vector[axis] = value
+	vector[axis] = _number_from_display(value, options)
 	context.commit_property(
 		model,
 		property,
@@ -374,15 +600,23 @@ func _vector_changed(
 	)
 
 
-func _enum_changed(value: int, property: StringName, caption: String) -> void:
+func _enum_changed(index: int, property: StringName, caption: String, values: Array = []) -> void:
 	if _syncing:
 		return
+	var value: Variant = values[index] if index >= 0 and index < values.size() else index
 	context.commit_property(model, property, value, tr(caption))
 
 
-func _color_changed(value: Color, property: StringName, caption: String) -> void:
+func _color_changed(
+		value: Color,
+		property: StringName,
+		caption: String,
+		force_opaque := false,
+) -> void:
 	if _syncing:
 		return
+	if force_opaque:
+		value.a = 1.0
 	context.commit_property(model, property, value, tr(caption), "", UndoRedo.MERGE_ENDS)
 
 
@@ -399,6 +633,88 @@ func _text_focus_exited(control: LineEdit, property: StringName, caption: String
 	_commit_text(control.text, property, caption)
 
 
+func _multiline_focus_exited(control: TextEdit, property: StringName, caption: String) -> void:
+	_commit_text(control.text, property, caption)
+
+
+func _suggestion_selected(
+		index: int,
+		control: LineEdit,
+		property: StringName,
+		caption: String,
+		suggestions: PackedStringArray,
+) -> void:
+	if index < 0 or index >= suggestions.size():
+		return
+	control.text = suggestions[index]
+	_commit_text(control.text, property, caption)
+
+
+func _bitmask_item_pressed(
+		index: int,
+		control: MenuButton,
+		property: StringName,
+		caption: String,
+		items: Array[Dictionary],
+) -> void:
+	if _syncing or index < 0 or index >= items.size():
+		return
+	var value := int(model.get(property)) ^ int(items[index].value)
+	context.commit_property(model, property, value, tr(caption))
+	_sync_bitmask_control(control, value, items)
+
+
+func _sync_bitmask_control(control: MenuButton, value: int, items: Array[Dictionary]) -> void:
+	var popup := control.get_popup()
+	var selected := PackedStringArray()
+	for index in items.size():
+		var mask := int(items[index].value)
+		var checked := mask != 0 and (value & mask) == mask
+		popup.set_item_checked(index, checked)
+		if checked:
+			selected.append(tr(String(items[index].label)))
+	if selected.is_empty():
+		control.text = tr("None")
+	elif selected.size() <= 3:
+		control.text = ", ".join(selected)
+	else:
+		control.text = tr("%d selected") % selected.size()
+
+
+func _browse_path(
+		control: LineEdit,
+		property: StringName,
+		caption: String,
+		options: Dictionary,
+) -> void:
+	var dialog := FileDialog.new()
+	dialog.title = tr("Choose %s") % tr(caption)
+	dialog.access = int(options.get("access", FileDialog.ACCESS_RESOURCES))
+	dialog.file_mode = int(options.get("file_mode", FileDialog.FILE_MODE_OPEN_FILE))
+	var filters: PackedStringArray = options.get("filters", PackedStringArray())
+	if not filters.is_empty():
+		dialog.filters = filters
+	if not control.text.is_empty() and not control.text.begins_with("uid://"):
+		dialog.current_path = control.text
+	dialog.file_selected.connect(_path_selected.bind(control, property, caption, dialog))
+	dialog.dir_selected.connect(_path_selected.bind(control, property, caption, dialog))
+	dialog.canceled.connect(dialog.queue_free)
+	add_child(dialog)
+	dialog.popup_centered_ratio(0.7)
+
+
+func _path_selected(
+		path: String,
+		control: LineEdit,
+		property: StringName,
+		caption: String,
+		dialog: FileDialog,
+) -> void:
+	control.text = path
+	_commit_text(path, property, caption)
+	dialog.queue_free()
+
+
 func _commit_text(text: String, property: StringName, caption: String) -> void:
 	if _syncing:
 		return
@@ -408,7 +724,23 @@ func _commit_text(text: String, property: StringName, caption: String) -> void:
 		value = _text_to_path(text)
 	elif current is NodePath:
 		value = NodePath(text)
+	elif current is StringName:
+		value = StringName(text)
 	context.commit_property(model, property, value, tr(caption))
+
+
+func _tag_property_control(control: Control, property: StringName, kind: StringName) -> void:
+	control.set_meta(&"scatter_property", property)
+	control.set_meta(&"scatter_property_kind", kind)
+
+
+static func _number_to_display(value: float, options: Dictionary) -> float:
+	return value * float(options.get("display_scale", 1.0))
+
+
+static func _number_from_display(value: float, options: Dictionary) -> float:
+	var scale := float(options.get("display_scale", 1.0))
+	return value / scale if not is_zero_approx(scale) else value
 
 
 func _tint_native_titlebar(color: Color) -> void:

@@ -362,19 +362,24 @@ Input and output ports with the same ID appear on the same row. GraphEdit uses i
 
 ### 8.2 Property UI
 
-The View reads `model.get_property_list()` and chooses controls from the Variant type and `PropertyHint`:
+The View reads the ordered `model.get_property_list()` and treats property-usage layout markers separately from editable fields. Explicit `@export_category`, `@export_group`, and `@export_subgroup` annotations become static section headers; prefix hints determine membership and are removed from display labels. Automatic script-class categories and sections with no visible supported properties are omitted.
+
+Editable fields require both `PROPERTY_USAGE_EDITOR` and `PROPERTY_USAGE_SCRIPT_VARIABLE`. `PROPERTY_USAGE_READ_ONLY` keeps a field visible but disables its controls. The Variant type, `PropertyHint`, `hint_string`, and remaining usage flags select and configure the editor:
 
 | Model declaration | Editor control |
 | --- | --- |
 | exported `bool` | CheckBox |
-| `@export_range(...)` | SpinBox |
-| `@export_enum(...)` | OptionButton |
-| `Vector2` / `Vector3` | Component SpinBoxes |
-| `Color` | ColorPickerButton |
+| `@export_range(...)` | SpinBox with bounds, step, overflow, exponential editing, suffix, and angle conversion |
+| integer or String `@export_enum(...)` | OptionButton preserving explicit values |
+| `@export_flags` or layer hint | Checkable bitmask menu |
+| `Vector2` / `Vector3` | Component SpinBoxes with suffix and angle conversion |
+| `Color` / `@export_color_no_alpha` | ColorPickerButton with matching alpha policy |
+| plain, placeholder, password, or multiline String | LineEdit or TextEdit |
+| String enum suggestion | Editable LineEdit with a suggestion menu |
+| file, save-file, or directory String hint | LineEdit plus a configured FileDialog |
 | `NodePath` | LineEdit |
-| `@export_file` | File-path LineEdit |
 
-Ranges and enums are defined once in the node model, preventing Model and View constraints from drifting. Final Output and Paint Region keep specialized Views because they need custom statistics or layout.
+Arrays, Dictionaries, Resources/Objects, Callables/tool buttons, property arrays, and custom Inspector plugins are intentionally outside the generic node View. They require a specialized View. The common metadata remains defined once in the node model, preventing Model and View constraints from drifting. Final Output and Paint Region keep specialized Views because they need custom statistics or layout.
 
 Each View exposes a structural signature derived from its visible port descriptors. Specialized Views extend the signature with layout dependencies; Final Output includes its incoming variadic connection count. The Graph editor stores the signature produced when a View is built and replaces that View only when the desired signature changes.
 

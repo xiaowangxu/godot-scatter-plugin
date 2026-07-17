@@ -2,17 +2,27 @@
 class_name ScatterArrayNode
 extends ScatterPlacementNode
 
+@export_category("Copies")
+@export_group("Count")
 @export_range(1, 10000, 1) var amount := 1
 @export_range(-1, 10000, 1) var min_amount := -1
+@export var randomize_indices := true
+
+@export_group("Position")
 @export var local_offset := false
 @export var offset := Vector3(2, 0, 0)
+
+@export_group("Rotation")
 @export var local_rotation := false
 @export var rotation := Vector3.ZERO
+
+@export_subgroup("Pivot")
 @export var individual_rotation_pivots := true
 @export var rotation_pivot := Vector3.ZERO
+
+@export_group("Scale")
 @export var local_scale := true
 @export var scale := Vector3.ONE
-@export var randomize_indices := true
 
 
 func get_type_id() -> StringName:
