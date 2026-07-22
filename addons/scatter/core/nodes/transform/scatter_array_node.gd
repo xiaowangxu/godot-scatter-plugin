@@ -2,12 +2,12 @@
 class_name ScatterArrayNode
 extends ScatterPlacementNode
 
-@export_category("Copies")
 @export_group("Count")
 @export_range(1, 10000, 1) var amount := 1
 @export_range(-1, 10000, 1) var min_amount := -1
 @export var randomize_indices := true
 
+@export_category("Transform")
 @export_group("Position")
 @export var local_offset := false
 @export var offset := Vector3(2, 0, 0)

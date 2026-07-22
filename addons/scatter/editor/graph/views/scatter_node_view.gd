@@ -5,6 +5,20 @@ extends GraphNode
 
 const CONTENT_PADDING := 5.0
 
+# Property section presentation switches. These intentionally live beside the
+# generic view so projects can tune the GraphNode presentation without changing
+# node models or exported-property metadata.
+const PROPERTY_CATEGORY_COLORS_ENABLED := true
+const PROPERTY_GROUPS_COLLAPSIBLE := true
+const PROPERTY_CATEGORIES_COLLAPSIBLE := false
+const PROPERTY_SECTIONS_DEFAULT_COLLAPSED := false
+const PROPERTY_GROUP_BACKGROUND_LIGHTEN := 0.3
+const PROPERTY_SUBGROUP_BACKGROUND_LIGHTEN := 0.1
+const PROPERTY_SUBGROUP_MARGIN_LEFT := 10
+const PROPERTY_GROUP_CORNER_RADIUS := 6
+
+static var _property_section_style_cache: Dictionary[String, StyleBoxFlat] = {}
+
 var model: ScatterNode
 var context: ScatterEditorContext
 var input_port_order: Array[StringName] = []
@@ -37,6 +51,7 @@ func bind_model(p_model: ScatterNode, p_context: ScatterEditorContext) -> void:
 	if model.supports_seed():
 		_add_seed_controls()
 	_build_properties()
+	_apply_property_section_visibility()
 	_add_content_padding(&"ContentPaddingBottom")
 	_tint_native_titlebar(model.get_color())
 
@@ -421,6 +436,14 @@ func add_property_subgroup(label_text: String) -> Control:
 	return _add_property_section(&"subgroup", label_text, 18.0)
 
 
+func end_property_group() -> void:
+	_add_property_section_boundary(1)
+
+
+func end_property_subgroup() -> void:
+	_add_property_section_boundary(2)
+
+
 func set_property_control_editable(control: Control, editable: bool) -> void:
 	if control is SpinBox:
 		control.editable = editable
@@ -510,6 +533,7 @@ func _make_line_edit(property: StringName, label_text: String) -> LineEdit:
 
 func _add_property_row(label_text: String, tooltip: String, control: Control) -> void:
 	var row := HBoxContainer.new()
+	row.set_meta(&"scatter_property_layout_item", true)
 	var label := Label.new()
 	label.text = tr(label_text)
 	label.custom_minimum_size.x = 84
@@ -521,29 +545,167 @@ func _add_property_row(label_text: String, tooltip: String, control: Control) ->
 
 
 func _add_property_section(kind: StringName, label_text: String, indentation: float) -> Control:
-	var margin := MarginContainer.new()
-	margin.set_meta(&"scatter_property_section", kind)
-	margin.set_meta(&"scatter_property_label", label_text)
-	margin.add_theme_constant_override(&"margin_left", int(indentation))
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override(&"separation", 4)
-	var label := Label.new()
-	label.text = tr(label_text)
-	label.set_meta(&"scatter_property_section", kind)
-	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	row.add_child(label)
+	var rank := _property_section_rank(kind)
+	var accent := _property_section_accent(kind)
+	var collapsible := (
+		PROPERTY_GROUPS_COLLAPSIBLE and kind != &"category"
+		or PROPERTY_CATEGORIES_COLLAPSIBLE and kind == &"category"
+	)
+	var initially_collapsed := PROPERTY_SECTIONS_DEFAULT_COLLAPSED and collapsible
+	var section := PanelContainer.new()
+	section.set_meta(&"scatter_property_layout_item", true)
+	section.set_meta(&"scatter_property_section", kind)
+	section.set_meta(&"scatter_property_section_rank", rank)
+	section.set_meta(&"scatter_property_label", label_text)
+	section.set_meta(&"scatter_property_collapsed", initially_collapsed)
+	section.add_theme_stylebox_override(&"panel", _property_section_style(kind, accent))
+	if collapsible:
+		var toggle := Button.new()
+		toggle.name = "SectionToggle"
+		toggle.flat = true
+		toggle.focus_mode = Control.FOCUS_NONE
+		toggle.toggle_mode = true
+		toggle.button_pressed = initially_collapsed
+		toggle.text = tr(label_text)
+		toggle.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		toggle.alignment = HORIZONTAL_ALIGNMENT_CENTER if kind == &"category" else HORIZONTAL_ALIGNMENT_LEFT
+		toggle.tooltip_text = tr("Collapse or expand this property section")
+		toggle.toggled.connect(_property_section_toggled.bind(section))
+		_update_property_section_toggle(toggle, initially_collapsed)
+		section.add_child(toggle)
+	else:
+		var label := Label.new()
+		label.text = tr(label_text)
+		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER if kind == &"category" else HORIZONTAL_ALIGNMENT_LEFT
+		section.add_child(label)
+	add_child(section)
+	return section
+
+
+func _add_property_section_boundary(rank: int) -> void:
+	var boundary := Control.new()
+	boundary.set_meta(&"scatter_property_layout_item", true)
+	boundary.set_meta(&"scatter_property_section_boundary", rank)
+	boundary.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	boundary.visible = false
+	add_child(boundary)
+
+
+func _property_section_toggled(collapsed: bool, section: Control) -> void:
+	section.set_meta(&"scatter_property_collapsed", collapsed)
+	var toggle := section.find_child("SectionToggle", true, false) as Button
+	if toggle != null:
+		_update_property_section_toggle(toggle, collapsed)
+	_apply_property_section_visibility()
+	call_deferred("_fit_after_property_section_toggle")
+
+
+func _apply_property_section_visibility() -> void:
+	var collapsed := [false, false, false]
+	for child in get_children():
+		if not child.has_meta(&"scatter_property_layout_item"):
+			continue
+		if child.has_meta(&"scatter_property_section_boundary"):
+			var boundary_rank := int(child.get_meta(&"scatter_property_section_boundary"))
+			for rank in range(boundary_rank, collapsed.size()):
+				collapsed[rank] = false
+			continue
+		if child.has_meta(&"scatter_property_section"):
+			var rank := int(child.get_meta(&"scatter_property_section_rank"))
+			var parent_hidden := false
+			for parent_rank in rank:
+				parent_hidden = parent_hidden or collapsed[parent_rank]
+			child.visible = not parent_hidden
+			collapsed[rank] = bool(child.get_meta(&"scatter_property_collapsed", false))
+			for descendant_rank in range(rank + 1, collapsed.size()):
+				collapsed[descendant_rank] = false
+			continue
+		child.visible = not (collapsed[0] or collapsed[1] or collapsed[2])
+
+
+func _fit_after_property_section_toggle() -> void:
+	reset_size()
+
+
+func _update_property_section_toggle(toggle: Button, collapsed: bool) -> void:
+	var icon_name := &"GuiTreeArrowRight" if collapsed else &"GuiTreeArrowDown"
+	toggle.icon = get_theme_icon(icon_name, &"EditorIcons")
+
+func _property_section_accent(kind: StringName) -> Color:
 	if kind == &"category":
-		label.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-		var separator := HSeparator.new()
-		separator.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row.add_child(separator)
-	elif kind == &"subgroup":
-		label.modulate.a = 0.78
-	margin.add_child(row)
-	add_child(margin)
-	return margin
+		return model.get_color() if model != null else Color("7fa8d8")
+	return (
+		get_theme_color(&"font_color", &"Label")
+		if has_theme_color(&"font_color", &"Label")
+		else Color("c7c7c7")
+	)
+
+
+func _property_section_style(kind: StringName, accent: Color) -> StyleBoxFlat:
+	var background := (
+		get_theme_color(&"dark_color_2", &"Editor")
+		if has_theme_color(&"dark_color_2", &"Editor")
+		else Color("69717eff")
+	)
+	var cache_key := "%s:%s:%s:%s:%s" % [
+		kind,
+		background.to_html(true),
+		accent.to_html(true) if kind == &"category" else "neutral",
+		PROPERTY_CATEGORY_COLORS_ENABLED,
+		(
+			PROPERTY_GROUP_BACKGROUND_LIGHTEN
+			if kind == &"group"
+			else PROPERTY_SUBGROUP_BACKGROUND_LIGHTEN
+		),
+	]
+	var cached := _property_section_style_cache.get(cache_key) as StyleBoxFlat
+	if cached != null:
+		return cached
+	var style := StyleBoxFlat.new()
+	style.resource_name = "Scatter Property %s" % String(kind).capitalize()
+	if kind == &"category":
+		style.bg_color = (
+			background.lerp(accent, 0.4)
+			if PROPERTY_CATEGORY_COLORS_ENABLED
+			else background
+		)
+		style.border_color = accent if PROPERTY_CATEGORY_COLORS_ENABLED else background.lightened(0.2)
+		style.corner_radius_top_left = PROPERTY_GROUP_CORNER_RADIUS
+		style.corner_radius_top_right = PROPERTY_GROUP_CORNER_RADIUS
+		style.corner_radius_bottom_left = PROPERTY_GROUP_CORNER_RADIUS
+		style.corner_radius_bottom_right = PROPERTY_GROUP_CORNER_RADIUS
+	else:
+		style.bg_color = background.lightened(
+			PROPERTY_GROUP_BACKGROUND_LIGHTEN
+			if kind == &"group"
+			else PROPERTY_SUBGROUP_BACKGROUND_LIGHTEN
+		)
+		style.corner_radius_top_left = PROPERTY_GROUP_CORNER_RADIUS
+		style.corner_radius_top_right = PROPERTY_GROUP_CORNER_RADIUS
+		style.corner_radius_bottom_left = PROPERTY_GROUP_CORNER_RADIUS
+		style.corner_radius_bottom_right = PROPERTY_GROUP_CORNER_RADIUS
+		style.expand_margin_left = 0 if kind == &"group" else -PROPERTY_SUBGROUP_MARGIN_LEFT
+		style.content_margin_left = 0 if kind == &"group" else PROPERTY_SUBGROUP_MARGIN_LEFT
+	_property_section_style_cache[cache_key] = style
+	return style
+
+
+func _section_text_color(kind: StringName, accent: Color, amount: float) -> Color:
+	var foreground := (
+		get_theme_color(&"font_color", &"Label")
+		if has_theme_color(&"font_color", &"Label")
+		else Color("d8d8d8")
+	)
+	return (
+		foreground.lerp(accent, 0.28 * amount)
+		if kind == &"category" and PROPERTY_CATEGORY_COLORS_ENABLED
+		else foreground
+	)
+
+
+static func _property_section_rank(kind: StringName) -> int:
+	return 0 if kind == &"category" else (1 if kind == &"group" else 2)
 
 
 func _enabled_changed(value: bool) -> void:

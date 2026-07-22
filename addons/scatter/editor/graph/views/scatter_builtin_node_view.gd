@@ -58,6 +58,10 @@ func _build_properties() -> void:
 				add_property_group(entry.label)
 			&"subgroup":
 				add_property_subgroup(entry.label)
+			&"group_end":
+				end_property_group()
+			&"subgroup_end":
+				end_property_subgroup()
 			&"property":
 				_add_exported_property(entry.info, entry.display_name)
 
@@ -203,11 +207,15 @@ func _property_layout_entries() -> Array[Dictionary]:
 		if group_id != previous_group_id:
 			if group_applies:
 				result.append({"kind": &"group", "label": group.label})
+			elif previous_group_id >= 0:
+				result.append({"kind": &"group_end"})
 			previous_group_id = group_id
 			previous_subgroup_id = -1
 		if subgroup_id != previous_subgroup_id:
 			if subgroup_applies:
 				result.append({"kind": &"subgroup", "label": subgroup.label})
+			elif previous_subgroup_id >= 0:
+				result.append({"kind": &"subgroup_end"})
 			previous_subgroup_id = subgroup_id
 		var display_name := property_name
 		if subgroup_applies:

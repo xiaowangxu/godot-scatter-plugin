@@ -364,7 +364,9 @@ Input and output ports with the same ID appear on the same row. GraphEdit uses i
 
 ### 8.2 Property UI
 
-The View reads the ordered `model.get_property_list()` and treats property-usage layout markers separately from editable fields. Explicit `@export_category`, `@export_group`, and `@export_subgroup` annotations become static section headers; prefix hints determine membership and are removed from display labels. Automatic script-class categories and sections with no visible supported properties are omitted.
+The View reads the ordered `model.get_property_list()` and treats property-usage layout markers separately from editable fields. Explicit `@export_category`, `@export_group`, and `@export_subgroup` annotations become styled section headers; prefix hints determine membership and are removed from display labels. Categories use the node accent, while Groups and Subgroups use the same compact neutral treatment as Godot Inspector groups. Every level is collapsible without changing model data; a Category collapse ends at the next Category. Automatic script-class categories and sections with no visible supported properties are omitted.
+
+`ScatterNodeView` keeps presentation policy in `PROPERTY_*` constants: Category colors, Group collapsing, Category collapsing, and the default collapsed state can be changed independently. Invisible boundary markers preserve the exact `@export_group("")` and prefix semantics while coordinating row visibility, so collapsing one section never hides an unrelated later property.
 
 Editable fields require both `PROPERTY_USAGE_EDITOR` and `PROPERTY_USAGE_SCRIPT_VARIABLE`. `PROPERTY_USAGE_READ_ONLY` keeps a field visible but disables its controls. The Variant type, `PropertyHint`, `hint_string`, and remaining usage flags select and configure the editor:
 

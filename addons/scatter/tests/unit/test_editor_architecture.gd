@@ -400,6 +400,9 @@ func _test_property_metadata(tree_root: Node) -> void:
 	])
 	assert(not _property_section_labels(view).has("Empty"))
 	assert(not _property_section_labels(view).has("scatter_property_metadata_fixture.gd"))
+	var measurements_section := _property_section(view, "Measurements") as PanelContainer
+	assert(measurements_section != null)
+	assert(measurements_section.get_theme_stylebox(&"panel") is StyleBoxFlat)
 
 	var distance := _property_control(view, &"metadata_distance") as SpinBox
 	assert(distance != null)
@@ -428,6 +431,21 @@ func _test_property_metadata(tree_root: Node) -> void:
 
 	var plain_text := _property_control(view, &"plain_text") as LineEdit
 	assert(plain_text != null and plain_text.get_parent().get_child_count() == 2)
+	var measurements_toggle := measurements_section.find_child("SectionToggle", true, false) as Button
+	assert(measurements_toggle != null)
+	measurements_toggle.toggled.emit(true)
+	assert(not distance.get_parent().visible)
+	assert(plain_text.get_parent().visible)
+	assert(_property_section(view, "Advanced").visible)
+	measurements_toggle.toggled.emit(false)
+	assert(distance.get_parent().visible)
+	var choices_section := _property_section(view, "Choices")
+	var choices_toggle := choices_section.find_child("SectionToggle", true, false) as Button
+	choices_toggle.toggled.emit(true)
+	assert(angle.get_parent().visible)
+	assert(not integer_enum.get_parent().visible)
+	choices_toggle.toggled.emit(false)
+	assert(integer_enum.get_parent().visible)
 	var bitmask := _property_control(view, &"flags") as MenuButton
 	assert(bitmask != null and bitmask.get_popup().item_count == 2)
 	assert(bitmask.get_popup().is_item_checked(0))
@@ -435,6 +453,16 @@ func _test_property_metadata(tree_root: Node) -> void:
 	bitmask.get_popup().id_pressed.emit(1)
 	assert(fixture.flags == 1)
 	assert(not bitmask.get_popup().is_item_checked(1))
+	var metadata_category := _property_section(view, "Metadata")
+	var metadata_toggle := metadata_category.find_child("SectionToggle", true, false) as Button
+	assert(metadata_toggle != null)
+	metadata_toggle.toggled.emit(true)
+	assert(not distance.get_parent().visible)
+	assert(not plain_text.get_parent().visible)
+	assert(_property_section(view, "Advanced").visible)
+	assert(bitmask.get_parent().visible)
+	metadata_toggle.toggled.emit(false)
+	assert(distance.get_parent().visible and plain_text.get_parent().visible)
 
 	var suggestion := _property_control(view, &"suggestion") as LineEdit
 	assert(suggestion != null)
@@ -481,13 +509,22 @@ func _test_property_metadata(tree_root: Node) -> void:
 		[&"subgroup", "Pivot"],
 		[&"group", "Scale"],
 	])
+	var count_style := (_property_section(array_view, "Count") as PanelContainer).get_theme_stylebox(&"panel") as StyleBoxFlat
+	var position_style := (_property_section(array_view, "Position") as PanelContainer).get_theme_stylebox(&"panel") as StyleBoxFlat
+	var category_style := (_property_section(array_view, "Copies") as PanelContainer).get_theme_stylebox(&"panel") as StyleBoxFlat
+	assert(count_style != null and position_style != null)
+	assert(category_style != null and category_style.border_width_left > 0)
+	assert(count_style.border_width_left == 0 and position_style.border_width_left == 0)
+	assert(count_style.bg_color == position_style.bg_color)
+	assert(count_style == position_style)
+	assert(count_style.corner_radius_top_left == ScatterNodeView.PROPERTY_GROUP_CORNER_RADIUS)
 	array_view.free()
 	var project_view := _production_node_view(tree_root, ScatterProjectNode.new())
 	_assert_property_sections(project_view, [
 		[&"category", "Projection"],
 		[&"group", "Ray"],
 		[&"group", "Collision"],
-		[&"group", "Result"],
+		[&"category", "Result"],
 	])
 	var collision_mask := _property_control(project_view, &"collision_mask") as MenuButton
 	assert(collision_mask != null and collision_mask.get_popup().item_count == 32)
@@ -530,6 +567,13 @@ func _property_section_labels(view: ScatterNodeView) -> PackedStringArray:
 		if child.has_meta(&"scatter_property_label"):
 			result.append(String(child.get_meta(&"scatter_property_label")))
 	return result
+
+
+func _property_section(view: ScatterNodeView, label: String) -> Control:
+	for child in view.get_children():
+		if child.get_meta(&"scatter_property_label", "") == label:
+			return child as Control
+	return null
 
 
 func _property_control(view: ScatterNodeView, property: StringName) -> Control:

@@ -12,7 +12,7 @@ extends ScatterPlacementNode
 @export_flags_3d_physics var collision_mask := 1
 @export_flags_3d_physics var exclude_mask := 0
 
-@export_group("Result")
+@export_category("Result")
 @export var remove_points_on_miss := true
 @export var align_with_collision_normal := false
 @export_range(0.0, 90.0, 1.0) var max_slope := 90.0
