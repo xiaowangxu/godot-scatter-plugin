@@ -521,10 +521,10 @@ func _add_property_row(label_text: String, tooltip: String, control: Control) ->
 
 
 func _add_property_section(kind: StringName, label_text: String, indentation: float) -> Control:
-	#var margin := MarginContainer.new()
-	#margin.set_meta(&"scatter_property_section", kind)
-	#margin.set_meta(&"scatter_property_label", label_text)
-	#margin.add_theme_constant_override(&"margin_left", int(indentation))
+	var margin := MarginContainer.new()
+	margin.set_meta(&"scatter_property_section", kind)
+	margin.set_meta(&"scatter_property_label", label_text)
+	margin.add_theme_constant_override(&"margin_left", int(indentation))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override(&"separation", 4)
 	var label := Label.new()
@@ -541,9 +541,9 @@ func _add_property_section(kind: StringName, label_text: String, indentation: fl
 		row.add_child(separator)
 	elif kind == &"subgroup":
 		label.modulate.a = 0.78
-	#margin.add_child(row)
-	add_child(row)
-	return row
+	margin.add_child(row)
+	add_child(margin)
+	return margin
 
 
 func _enabled_changed(value: bool) -> void:

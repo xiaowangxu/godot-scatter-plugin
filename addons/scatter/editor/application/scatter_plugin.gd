@@ -83,8 +83,11 @@ func _bind_signals() -> void:
 	_bind(_panel.build_requested, _build_current)
 	_bind(_panel.recipe_changed, _recipe_changed)
 	_bind(_panel.target_requested, _open_target)
+	_bind(_panel.target_invalidated, _target_invalidated)
 	_bind(_panel.viewport_tool_changed, _viewport_tool_changed)
 	_bind(_host.scene_closed, _scene_closed)
+	_bind(_host.get_tree().node_added, _target_tree_changed)
+	_bind(_host.get_tree().node_removed, _target_tree_changed)
 	_bind(_inspector.open_requested, _open_target)
 	_bind(_inspector.rebuild_requested, _build_target)
 	_bind(_inspector.detach_requested, _detach_target)
@@ -122,6 +125,17 @@ func _load_target_recipe(target: MultiMeshInstance3D) -> void:
 
 func _scene_closed(filepath: String) -> void:
 	if _panel.close_scene_sessions(filepath):
+		_target = null
+		_viewport_tools.set_target(null)
+
+
+func _target_tree_changed(node: Node) -> void:
+	if node is MultiMeshInstance3D:
+		_panel.queue_target_presence_reconciliation(node)
+
+
+func _target_invalidated(target_instance_id: int) -> void:
+	if not is_instance_valid(_target) or _target.get_instance_id() == target_instance_id:
 		_target = null
 		_viewport_tools.set_target(null)
 

@@ -6,6 +6,7 @@ signal build_requested
 signal recipe_changed
 signal recipe_link_changed(target: MultiMeshInstance3D)
 signal target_requested(target: MultiMeshInstance3D)
+signal target_invalidated(target_instance_id: int)
 signal viewport_tool_changed(tool_id: StringName, node_id: int)
 signal paint_settings_changed(collision_mask: int, erase: bool, radius: float, can_clear: bool)
 
@@ -17,6 +18,7 @@ var brush_radius := 2.0
 var active_paint_node_id := 0
 var active_path_node_id := 0
 var active_viewport_tool: StringName = &""
+var _target_instance_id := 0
 
 var _undo_redo: EditorUndoRedoManager
 var _recipe_links: ScatterRecipeLinkController
@@ -29,8 +31,11 @@ var _save_dialog: FileDialog
 var _load_dialog: FileDialog
 var _updating := false
 var _edit_sessions: Dictionary[String, ScatterRecipeEditSession] = {}
+var _detached_edit_sessions: Dictionary[String, ScatterRecipeEditSession] = {}
 var _edit_session: ScatterRecipeEditSession
 var _active_session_key := ""
+var _pending_target_presence: Dictionary[int, WeakRef] = {}
+var _target_presence_reconciliation_queued := false
 
 
 func _ready() -> void:
@@ -122,6 +127,7 @@ func set_target(value: MultiMeshInstance3D) -> void:
 	if is_node_ready() and _graph_editor != null:
 		_graph_editor.clear_target()
 	target = value
+	_target_instance_id = value.get_instance_id() if is_instance_valid(value) else 0
 	graph = null
 	_edit_session = null
 	if not is_node_ready():
@@ -436,6 +442,113 @@ func _prune_edit_sessions() -> void:
 			_edit_sessions.erase(key)
 			if key == _active_session_key:
 				_active_session_key = ""
+	for key in _detached_edit_sessions.keys():
+		var session := _detached_edit_sessions.get(key) as ScatterRecipeEditSession
+		if session == null or not session.has_valid_context() or not is_instance_valid(session.get_target()):
+			_detached_edit_sessions.erase(key)
+
+
+func queue_target_presence_reconciliation(changed_target: MultiMeshInstance3D) -> void:
+	if not is_instance_valid(changed_target):
+		return
+	_pending_target_presence[changed_target.get_instance_id()] = weakref(changed_target)
+	if _target_presence_reconciliation_queued:
+		return
+	_target_presence_reconciliation_queued = true
+	call_deferred("_reconcile_target_presence")
+
+
+func _reconcile_target_presence() -> void:
+	_target_presence_reconciliation_queued = false
+	var pending := _pending_target_presence
+	_pending_target_presence = {}
+	for instance_id_variant in pending:
+		var instance_id := int(instance_id_variant)
+		var target_weak := pending.get(instance_id) as WeakRef
+		var changed_target := (
+			target_weak.get_ref() as MultiMeshInstance3D
+			if target_weak != null
+			else null
+		)
+		if is_instance_valid(changed_target) and changed_target.is_inside_tree():
+			_restore_target_sessions(changed_target)
+		else:
+			_detach_target_sessions(instance_id)
+	_prune_edit_sessions()
+	_refresh_sidebar()
+
+
+func _detach_target_sessions(target_instance_id: int) -> void:
+	var active_target_removed := _target_instance_id == target_instance_id
+	for key_variant in _edit_sessions.keys():
+		var key := String(key_variant)
+		var session := _edit_sessions.get(key) as ScatterRecipeEditSession
+		if session == null or session.target_instance_id != target_instance_id:
+			continue
+		var replacement := _find_session_replacement(session, target_instance_id)
+		if replacement != null:
+			session.bind_owner(replacement, session.get_scene_context())
+		else:
+			_edit_sessions.erase(key)
+			_detached_edit_sessions[key] = session
+	if active_target_removed:
+		_clear_active_target()
+		target_invalidated.emit(target_instance_id)
+
+
+func _restore_target_sessions(restored_target: MultiMeshInstance3D) -> void:
+	var recipe_path := ScatterGraphAttachment.get_recipe_path(restored_target)
+	if recipe_path.is_empty():
+		return
+	for old_key_variant in _detached_edit_sessions.keys():
+		var old_key := String(old_key_variant)
+		var session := _detached_edit_sessions.get(old_key) as ScatterRecipeEditSession
+		if session == null or session.target_instance_id != restored_target.get_instance_id():
+			continue
+		if session.recipe_path != recipe_path:
+			_detached_edit_sessions.erase(old_key)
+			continue
+		var new_key := _edit_session_key(restored_target, recipe_path)
+		if not _edit_sessions.has(new_key):
+			session.bind_owner(restored_target, _edit_context_for(restored_target))
+			_edit_sessions[new_key] = session
+		_detached_edit_sessions.erase(old_key)
+
+
+func _find_session_replacement(
+		session: ScatterRecipeEditSession,
+		excluded_instance_id: int,
+) -> MultiMeshInstance3D:
+	var context := session.get_scene_context()
+	if not is_instance_valid(context):
+		return null
+	var pending: Array[Node] = [context]
+	while not pending.is_empty():
+		var candidate := pending.pop_back() as Node
+		if (
+			candidate is MultiMeshInstance3D
+			and candidate.get_instance_id() != excluded_instance_id
+			and candidate.is_inside_tree()
+			and ScatterGraphAttachment.get_recipe_path(candidate) == session.recipe_path
+		):
+			return candidate as MultiMeshInstance3D
+		for child in candidate.get_children():
+			pending.append(child)
+	return null
+
+
+func _clear_active_target() -> void:
+	stop_viewport_editing()
+	target = null
+	_target_instance_id = 0
+	graph = null
+	_edit_session = null
+	_active_session_key = ""
+	_graph_editor.clear_target()
+	_toolbar.set_editor_enabled(false)
+	_toolbar.set_recipe_dirty(false)
+	_status.set_title(tr("Scatter"))
+	update_status(tr("Select a MultiMeshInstance3D to edit its Scatter graph."))
 
 
 func close_scene_sessions(scene_path: String) -> bool:
@@ -445,17 +558,12 @@ func close_scene_sessions(scene_path: String) -> bool:
 		if session != null and session.belongs_to_scene(scene_path):
 			active_closed = active_closed or key == _active_session_key
 			_edit_sessions.erase(key)
+	for key in _detached_edit_sessions.keys():
+		var session := _detached_edit_sessions.get(key) as ScatterRecipeEditSession
+		if session != null and session.belongs_to_scene(scene_path):
+			_detached_edit_sessions.erase(key)
 	if active_closed:
-		stop_viewport_editing()
-		target = null
-		graph = null
-		_edit_session = null
-		_active_session_key = ""
-		_graph_editor.clear_target()
-		_toolbar.set_editor_enabled(false)
-		_toolbar.set_recipe_dirty(false)
-		_status.set_title(tr("Scatter"))
-		update_status(tr("Select a MultiMeshInstance3D to edit its Scatter graph."))
+		_clear_active_target()
 	_refresh_sidebar()
 	return active_closed
 

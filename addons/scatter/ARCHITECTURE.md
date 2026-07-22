@@ -227,6 +227,8 @@ A Recipe can have unsaved edits while the scene already displays a Build from th
 
 Targets in the same scene that reference the same Recipe use the same session key and therefore share one Working Graph.
 
+The application coordinator observes `SceneTree.node_added` and `node_removed` and asks the Panel to reconcile Target presence on a deferred boundary. Removing the only Target for a session immediately removes that Recipe from the Sidebar and clears the active editor. The Working Graph is suspended behind the UI while the removed node remains alive, allowing Editor Undo to restore the same unsaved working copy. If another Target in the scene references the same Recipe, the session is rebound to that Target instead. Closing the scene permanently removes both attached and suspended sessions.
+
 ### 6.2 Dirty State
 
 ```text

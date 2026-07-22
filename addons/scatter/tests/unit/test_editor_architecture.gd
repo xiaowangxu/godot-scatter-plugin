@@ -230,6 +230,7 @@ func _init() -> void:
 	var loaded_paint := loaded.find_node(paint_node.node_id) as ScatterPaintRegionNode
 	assert(loaded_paint != null and loaded_paint.strokes.size() == 1)
 	await _test_scene_recipe_session_lifecycle(panel)
+	await _test_target_removal_session_lifecycle(panel, sidebar)
 	path_tool.get_toolbar().free()
 	paint.get_toolbar().free()
 	path_tool = null
@@ -612,3 +613,63 @@ func _test_scene_recipe_session_lifecycle(panel: ScatterPanel) -> void:
 	panel.set_target(reopened_target)
 	assert(panel.graph.seed == 101)
 	reopened_scene.free()
+
+
+func _test_target_removal_session_lifecycle(
+		panel: ScatterPanel,
+		sidebar: ScatterRecipeSidebar,
+) -> void:
+	var recipe_path := "user://scatter_target_session_recipe.tres"
+	var saved_graph := ScatterGraphFactory.create_default()
+	saved_graph.seed = 303
+	assert(ScatterRecipeIO.save_graph(saved_graph, recipe_path) == OK)
+	var scene_root := Node3D.new()
+	scene_root.name = "TargetSessionScene"
+	root.add_child(scene_root)
+	var scene_target := MultiMeshInstance3D.new()
+	scene_target.name = "RemovedTarget"
+	scene_root.add_child(scene_target)
+	scene_target.owner = scene_root
+	assert(ScatterGraphAttachment.attach(scene_target, saved_graph))
+	panel.set_target(scene_target)
+	panel.graph.seed = 404
+	panel._on_recipe_changed()
+	var session_count := sidebar.recipe_count()
+	assert(session_count > 0)
+
+	# A removed target disappears from the active editor and sidebar, but its
+	# dirty working copy remains suspended so Editor Undo can restore it.
+	scene_root.remove_child(scene_target)
+	panel.queue_target_presence_reconciliation(scene_target)
+	await process_frame
+	assert(panel.target == null and panel.graph == null)
+	assert(sidebar.recipe_count() == session_count - 1)
+
+	scene_root.add_child(scene_target)
+	scene_target.owner = scene_root
+	panel.queue_target_presence_reconciliation(scene_target)
+	await process_frame
+	assert(sidebar.recipe_count() == session_count)
+	panel.set_target(scene_target)
+	assert(panel.graph.seed == 404)
+
+	# When another target in the same scene references the Recipe, removing the
+	# bound target rebinds the shared session instead of removing the entry.
+	var shared_target := MultiMeshInstance3D.new()
+	shared_target.name = "SharedTarget"
+	scene_root.add_child(shared_target)
+	shared_target.owner = scene_root
+	assert(ScatterGraphAttachment.attach(shared_target, saved_graph))
+	scene_root.remove_child(scene_target)
+	panel.queue_target_presence_reconciliation(scene_target)
+	await process_frame
+	assert(sidebar.recipe_count() == session_count)
+	var shared_key := panel._edit_session_key(shared_target, recipe_path)
+	var shared_session := panel._edit_sessions.get(shared_key) as ScatterRecipeEditSession
+	assert(shared_session != null and shared_session.get_target() == shared_target)
+	assert(shared_session.working_graph.seed == 404)
+
+	scene_target.free()
+	panel.close_scene_sessions("")
+	shared_target.free()
+	scene_root.free()

@@ -7,6 +7,7 @@ var source_graph: ScatterGraph
 var working_graph: ScatterGraph
 var dirty := false
 var target_ref: WeakRef
+var target_instance_id := 0
 var scene_context_ref: WeakRef
 var scene_path := ""
 
@@ -29,12 +30,17 @@ static func create(
 
 func bind_owner(owner: MultiMeshInstance3D, context: Node) -> void:
 	target_ref = weakref(owner) if is_instance_valid(owner) else null
+	target_instance_id = owner.get_instance_id() if is_instance_valid(owner) else 0
 	scene_context_ref = weakref(context) if is_instance_valid(context) else null
 	scene_path = context.scene_file_path if is_instance_valid(context) else ""
 
 
 func get_target() -> MultiMeshInstance3D:
 	return target_ref.get_ref() as MultiMeshInstance3D if target_ref != null else null
+
+
+func get_scene_context() -> Node:
+	return scene_context_ref.get_ref() as Node if scene_context_ref != null else null
 
 
 func has_valid_context() -> bool:
