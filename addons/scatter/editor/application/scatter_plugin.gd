@@ -152,9 +152,10 @@ func _build_target(target: MultiMeshInstance3D, mark_unsaved := true) -> void:
 func _build_succeeded(
 		target: MultiMeshInstance3D,
 		result: ScatterBuildResult,
-		mark_unsaved: bool,
+	mark_unsaved: bool,
 ) -> void:
 	if _panel.target == target:
+		_panel.update_diagnostics(result.errors, result.warnings)
 		_panel.update_output_counts(result.output_counts)
 		if not result.warnings.is_empty():
 			_panel.update_status(tr("Built %d instances with %d warning(s): %s") % [
@@ -167,6 +168,7 @@ func _build_succeeded(
 
 func _build_failed(target: MultiMeshInstance3D, result: ScatterBuildResult) -> void:
 	if _panel.target == target:
+		_panel.update_diagnostics(result.errors, result.warnings)
 		_panel.update_status(tr("Build failed: %s") % result.error)
 	push_error("Scatter: %s" % result.error)
 

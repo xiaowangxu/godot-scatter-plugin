@@ -26,6 +26,22 @@ func get_value_type_id() -> StringName:
 	return ScatterValueTypeRegistry.PATH
 
 
+func get_intrinsic_dimension() -> int:
+	return 1
+
+
+func get_intrinsic_measure_local() -> float:
+	return get_length_local()
+
+
+func supports_direct_sampling() -> bool:
+	return true
+
+
+func supports_neighbor_sampling() -> bool:
+	return false
+
+
 func get_local_transform() -> Transform3D:
 	return _local_transform
 

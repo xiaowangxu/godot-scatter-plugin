@@ -17,6 +17,8 @@ func _test_types() -> void:
 	ScatterValueTypeRegistry.ensure_builtins()
 	assert(ScatterValueTypeRegistry.is_assignable(ScatterValueTypeRegistry.REGULAR_REGION, ScatterValueTypeRegistry.SHAPE))
 	assert(ScatterValueTypeRegistry.is_assignable(ScatterValueTypeRegistry.REGULAR_REGION, ScatterValueTypeRegistry.DIRECT_SAMPLEABLE))
+	assert(ScatterValueTypeRegistry.is_assignable(ScatterValueTypeRegistry.PLANAR_REGION, ScatterValueTypeRegistry.REGION))
+	assert(ScatterValueTypeRegistry.is_assignable(ScatterValueTypeRegistry.PLANAR_REGION, ScatterValueTypeRegistry.DIRECT_SAMPLEABLE))
 	assert(ScatterValueTypeRegistry.is_assignable(ScatterValueTypeRegistry.PATH, ScatterValueTypeRegistry.DIRECT_SAMPLEABLE))
 	assert(ScatterValueTypeRegistry.is_assignable(ScatterValueTypeRegistry.PATH, ScatterValueTypeRegistry.SHAPE))
 	assert(ScatterValueTypeRegistry.register_type(&"test_shape", [ScatterValueTypeRegistry.SHAPE], Color.WHITE))
@@ -154,6 +156,48 @@ func _test_path_and_poisson() -> void:
 		for other in range(index + 1, poisson.transforms.size()):
 			assert(poisson.transforms[index].origin.distance_to(poisson.transforms[other].origin) >= 0.999)
 
+	var thin := ScatterBoxRegion.new(Vector3.ZERO, Vector3(12, 0.001, 12), Vector3(17, 31, 9))
+	assert(thin.get_intrinsic_dimension() == 3)
+	var thin_poisson := ScatterInstances.new()
+	var thin_rng := RandomNumberGenerator.new()
+	thin_rng.seed = 91
+	var thin_stats := ScatterCreationOps.append_poisson(
+		thin_poisson,
+		thin,
+		0.8,
+		20,
+		80,
+		thin_rng,
+		1000,
+	)
+	assert(thin_poisson.transforms.size() >= 40, "Thin volumes must not collapse to a single Poisson point")
+	assert(thin_stats.intrinsic_dimension == 3)
+	_assert_minimum_distance(thin_poisson, 0.799)
+
+	var disconnected := ScatterUnionRegion.new(
+		ScatterBoxRegion.new(Vector3(-10, 0, 0), Vector3(4, 0, 4)),
+		ScatterBoxRegion.new(Vector3(10, 0, 0), Vector3(4, 0, 4)),
+	)
+	var disconnected_poisson := ScatterInstances.new()
+	var disconnected_rng := RandomNumberGenerator.new()
+	disconnected_rng.seed = 123
+	ScatterCreationOps.append_poisson(
+		disconnected_poisson,
+		disconnected,
+		0.75,
+		20,
+		60,
+		disconnected_rng,
+		1000,
+	)
+	assert(disconnected_poisson.transforms.any(
+		func(transform: Transform3D) -> bool: return transform.origin.x < 0.0
+	))
+	assert(disconnected_poisson.transforms.any(
+		func(transform: Transform3D) -> bool: return transform.origin.x > 0.0
+	))
+	_assert_minimum_distance(disconnected_poisson, 0.749)
+
 
 func _test_shape_filtering() -> void:
 	var outer := ScatterBoxRegion.new(Vector3.ZERO, Vector3(10, 10, 10))
@@ -168,6 +212,16 @@ func _test_shape_filtering() -> void:
 	assert(instances.transforms[0].origin == Vector3(4, 0, 0))
 	assert(instances.colors == [Color.GREEN])
 	assert(instances.custom_data == [Color(0, 1, 0, 0)])
+
+
+func _assert_minimum_distance(instances: ScatterInstances, minimum: float) -> void:
+	for index in instances.transforms.size():
+		for other in range(index + 1, instances.transforms.size()):
+			assert(
+				instances.transforms[index].origin.distance_to(
+					instances.transforms[other].origin
+				) >= minimum
+			)
 
 
 func _test_grid_spaces() -> void:

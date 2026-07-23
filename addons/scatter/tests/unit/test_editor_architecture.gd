@@ -69,6 +69,38 @@ func _init() -> void:
 	assert(panel.get_node("WorkArea/EditorArea/RecipeGraph") is ScatterGraphEditor)
 	var graph_editor := panel.get_node("WorkArea/EditorArea/RecipeGraph") as ScatterGraphEditor
 	assert(graph_editor.get_connection_list().size() == graph.connections.size())
+	var diagnostic_node := graph.nodes[0]
+	graph_editor.update_diagnostics([
+		ScatterDiagnostic.new(
+			ScatterDiagnostic.Severity.WARNING,
+			&"test_warning",
+			diagnostic_node.node_id,
+			"Test node warning.",
+		),
+	])
+	var diagnostic_button := graph_editor.get_view(diagnostic_node.node_id).find_child(
+		"DiagnosticsButton",
+		true,
+		false,
+	) as MenuButton
+	assert(diagnostic_button != null and diagnostic_button.visible)
+	assert(diagnostic_button.tooltip_text.contains("Test node warning."))
+	assert(diagnostic_button.get_popup().item_count == 2)
+	assert(diagnostic_button.get_popup().get_item_text(1) == "Test node warning.")
+	var diagnostic_position := diagnostic_node.graph_position
+	graph_editor.controller.move_nodes({
+		diagnostic_node.node_id: {
+			"from": diagnostic_position,
+			"to": diagnostic_position + Vector2(12, 8),
+		},
+	})
+	assert(diagnostic_button.visible, "Moving a node must preserve its diagnostics")
+	assert(diagnostic_button.get_popup().item_count == 2)
+	graph_editor.editor_context.notify_model_changed(
+		ScatterEditorContext.ChangeKind.PROPERTY,
+	)
+	assert(not diagnostic_button.visible)
+	assert(diagnostic_button.get_popup().item_count == 0)
 	# GraphEdit emits disconnection_request while it is still processing the
 	# mouse press. Rebuilding here would invalidate its port hot-zone lookup and
 	# turn the connection gesture into an accidental box selection.
@@ -155,7 +187,50 @@ func _init() -> void:
 		assert(bottom_padding.custom_minimum_size.y == top_padding.custom_minimum_size.y)
 		view_count += 1
 		view.free()
-	assert(view_count == 36)
+	assert(view_count == 37)
+	var diagnostic_view := _production_node_view(root, ScatterPathPlanarNode.new())
+	var titlebar_height_before := (
+		diagnostic_view.get_titlebar_hbox().get_combined_minimum_size().y
+	)
+	diagnostic_view.set_diagnostics([
+		ScatterDiagnostic.new(
+			ScatterDiagnostic.Severity.WARNING,
+			&"warning",
+			diagnostic_view.model.node_id,
+			"First warning.",
+		),
+		ScatterDiagnostic.new(
+			ScatterDiagnostic.Severity.ERROR,
+			&"error",
+			diagnostic_view.model.node_id,
+			"Blocking error.",
+		),
+	])
+	var view_diagnostic_button := diagnostic_view.find_child(
+		"DiagnosticsButton",
+		true,
+		false,
+	) as MenuButton
+	assert(view_diagnostic_button != null and view_diagnostic_button.visible)
+	var titlebar_height_after := (
+		diagnostic_view.get_titlebar_hbox().get_combined_minimum_size().y
+	)
+	assert(
+		titlebar_height_after <= titlebar_height_before + 0.001,
+		"Showing diagnostics must not increase the GraphNode titlebar height",
+	)
+	assert(view_diagnostic_button.text.contains("2"))
+	assert(view_diagnostic_button.tooltip_text.begins_with("Error: Blocking error."))
+	var diagnostic_popup := view_diagnostic_button.get_popup()
+	assert(diagnostic_popup.item_count == 4)
+	assert(diagnostic_popup.is_item_separator(0))
+	assert(diagnostic_popup.get_item_text(1) == "Blocking error.")
+	assert(diagnostic_popup.is_item_separator(2))
+	assert(diagnostic_popup.get_item_text(3) == "First warning.")
+	diagnostic_view.set_diagnostics([])
+	assert(not view_diagnostic_button.visible)
+	assert(diagnostic_popup.item_count == 0)
+	diagnostic_view.free()
 	_test_property_metadata(root)
 	assert(InspectorScript != null)
 	assert(GizmoScript != null)
@@ -455,14 +530,17 @@ func _test_property_metadata(tree_root: Node) -> void:
 	assert(not bitmask.get_popup().is_item_checked(1))
 	var metadata_category := _property_section(view, "Metadata")
 	var metadata_toggle := metadata_category.find_child("SectionToggle", true, false) as Button
-	assert(metadata_toggle != null)
-	metadata_toggle.toggled.emit(true)
-	assert(not distance.get_parent().visible)
-	assert(not plain_text.get_parent().visible)
-	assert(_property_section(view, "Advanced").visible)
-	assert(bitmask.get_parent().visible)
-	metadata_toggle.toggled.emit(false)
-	assert(distance.get_parent().visible and plain_text.get_parent().visible)
+	if ScatterNodeView.PROPERTY_CATEGORIES_COLLAPSIBLE:
+		assert(metadata_toggle != null)
+		metadata_toggle.toggled.emit(true)
+		assert(not distance.get_parent().visible)
+		assert(not plain_text.get_parent().visible)
+		assert(_property_section(view, "Advanced").visible)
+		assert(bitmask.get_parent().visible)
+		metadata_toggle.toggled.emit(false)
+		assert(distance.get_parent().visible and plain_text.get_parent().visible)
+	else:
+		assert(metadata_toggle == null)
 
 	var suggestion := _property_control(view, &"suggestion") as LineEdit
 	assert(suggestion != null)
@@ -502,8 +580,8 @@ func _test_property_metadata(tree_root: Node) -> void:
 
 	var array_view := _production_node_view(tree_root, ScatterArrayNode.new())
 	_assert_property_sections(array_view, [
-		[&"category", "Copies"],
 		[&"group", "Count"],
+		[&"category", "Transform"],
 		[&"group", "Position"],
 		[&"group", "Rotation"],
 		[&"subgroup", "Pivot"],
@@ -511,9 +589,9 @@ func _test_property_metadata(tree_root: Node) -> void:
 	])
 	var count_style := (_property_section(array_view, "Count") as PanelContainer).get_theme_stylebox(&"panel") as StyleBoxFlat
 	var position_style := (_property_section(array_view, "Position") as PanelContainer).get_theme_stylebox(&"panel") as StyleBoxFlat
-	var category_style := (_property_section(array_view, "Copies") as PanelContainer).get_theme_stylebox(&"panel") as StyleBoxFlat
+	var category_style := (_property_section(array_view, "Transform") as PanelContainer).get_theme_stylebox(&"panel") as StyleBoxFlat
 	assert(count_style != null and position_style != null)
-	assert(category_style != null and category_style.border_width_left > 0)
+	assert(category_style != null and category_style.bg_color != count_style.bg_color)
 	assert(count_style.border_width_left == 0 and position_style.border_width_left == 0)
 	assert(count_style.bg_color == position_style.bg_color)
 	assert(count_style == position_style)

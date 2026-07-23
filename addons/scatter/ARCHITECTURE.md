@@ -450,7 +450,7 @@ value
 
 This is a multiple-parent type graph. `regular_region` is both a `region` and `direct_sampleable`; `path` is both a `shape` and `direct_sampleable`. Compatibility uses `is_assignable(actual, expected)` and caches the result.
 
-`dynamic_geometry` exists only for the editor-time adaptive port on Shape Transform. Once connected, it must resolve to a concrete Shape, Region, Regular Region, or Path type.
+`dynamic_geometry` exists only for the editor-time adaptive port on Shape Transform. Once connected, it must resolve to a concrete Shape, Region, Regular Region, Planar Region, or Path type.
 
 ---
 
@@ -662,7 +662,7 @@ All final instance `Transform3D` values are stored in **Target MultiMesh Local**
 - `contains_local(point)`;
 - local/shape coordinate conversion.
 
-`ScatterRegularRegionValue` adds exact uniform sampling. Box and Sphere are Regular Regions.
+`ScatterShapeValue` also exposes an intrinsic sampling protocol: dimension, measure, direct global sampling, and optional local-neighbor proposals. `ScatterRegularRegionValue` provides exact uniform volume sampling. Box and Sphere are Regular Regions. `ScatterPlanarRegion` is a true 2D polygon embedded in 3D; it triangulates the polygon for exact area-weighted sampling. `ScatterPathValue` is the 1D implementation.
 
 `ScatterPathValue` stores points, closed state, cumulative arc lengths, and a local transform. It samples by total arc length.
 
@@ -694,7 +694,7 @@ This lets multiple downstream branches safely share upstream values and keeps co
 ### 15.1 Random
 
 - Path: directly sample a random arc-length parameter.
-- Regular Region: call exact `sample_local()`.
+- Direct-sampleable Shape: call exact `sample_local()` in its intrinsic length, area, or volume domain.
 - General Shape: rejection-sample inside the local AABB, then call `contains_local()`.
 
 General-Shape rejection budget:
@@ -716,8 +716,9 @@ Very thin Boolean Shapes or low-fill Shapes may generate fewer instances than re
 
 ### 15.3 Poisson
 
-- Volume mode uses a deterministic 3D Bridson active list and spatial grid.
-- Path mode samples random arc-length candidates and checks minimum Euclidean distance.
+- Shapes may provide 1D, 2D, or 3D local-annulus proposals through the common sampling protocol.
+- The active list is mixed with global proposals. Global reseeding reaches disconnected components and provides a robust fallback for thin or transformed Shapes that cannot efficiently propose local neighbors.
+- All accepted candidates use one 3D spatial grid and the final Euclidean minimum-distance check, regardless of intrinsic dimension.
 - `samples_before_rejection` controls candidates per active point.
 - `max_points` and the global instance limit jointly bound output.
 
@@ -762,7 +763,7 @@ This is `O(n)` and avoids quadratic movement from repeated `remove_at()` calls.
 
 ### 16.3 Global Instance Limit
 
-Default Build limit:
+Default Build limit (configured in **Editor Settings > Scatter > Limits**):
 
 ```text
 1,000,000 instances
@@ -770,7 +771,7 @@ Default Build limit:
 
 Creation nodes, Array, Merge, and Final Output must respect `context.maximum_instances`. Final Output truncates by variadic connection order and adds a Warning.
 
-Gizmo preview uses a separate 2,000-instance limit so editor refreshes do not generate the full production result.
+Gizmo preview calculation and the number of drawn instance markers have separate Editor Settings limits, both defaulting to 2,000. This keeps editor refreshes from generating or drawing the full production result.
 
 ---
 
@@ -942,7 +943,7 @@ Do not move the current `ScatterBuildRequest`, which holds live Scene Nodes, dir
 - Recoverable partial-output conditions use Warning.
 - Structural, type, cycle, and output-protocol failures use Error.
 - Diagnostics should include a stable code, node ID, and details.
-- UI shows the first error; the full array remains available to tests and a future diagnostics panel.
+- The status bar summarizes the Build, while node-scoped diagnostics are grouped by `node_id` and shown on the corresponding GraphNode. Editing clears stale diagnostics; the next Build repopulates them.
 
 ### 21.5 Performance
 

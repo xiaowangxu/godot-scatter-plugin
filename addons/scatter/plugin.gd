@@ -6,6 +6,7 @@ const InspectorScript := preload("res://addons/scatter/editor/inspector/scatter_
 const GizmoScript := preload("res://addons/scatter/editor/gizmo/scatter_gizmo_plugin.gd")
 const ViewportToolHostScript := preload("res://addons/scatter/editor/viewport/scatter_viewport_tool_host.gd")
 const ScatterPluginScript := preload("res://addons/scatter/editor/application/scatter_plugin.gd")
+const EditorSettingsScript := preload("res://addons/scatter/editor/application/scatter_editor_settings.gd")
 
 var _panel: ScatterPanel
 var _inspector: ScatterInspectorPlugin
@@ -18,6 +19,7 @@ var _scatter_plugin: ScatterPlugin
 
 func _enter_tree() -> void:
 	ScatterBuiltinRegistry.register_all()
+	EditorSettingsScript.register_settings()
 	_recipe_links = ScatterRecipeLinkController.new(get_undo_redo())
 	_panel = PanelScript.new()
 	_panel.set_undo_redo(get_undo_redo())

@@ -21,6 +21,30 @@ func get_local_transform() -> Transform3D:
 	return ScatterRegionValue.resolve_boolean_pivot(pivot_mode, a, b, get_bounds_local())
 
 
+func get_intrinsic_dimension() -> int:
+	return mini(a.get_intrinsic_dimension(), b.get_intrinsic_dimension())
+
+
+func supports_direct_sampling() -> bool:
+	return _sampling_source() != null
+
+
+func supports_neighbor_sampling() -> bool:
+	return false
+
+
+func sample_local(value: float) -> Vector3:
+	var source := _sampling_source()
+	if source == null:
+		return Vector3.INF
+	var other := b if source == a else a
+	for attempt in 64:
+		var point := source.sample_local(ScatterSampleHash.dimension(value, attempt))
+		if point.is_finite() and other.contains_local(point):
+			return point
+	return Vector3.INF
+
+
 func get_bounds_local() -> AABB:
 	return ScatterMath.aabb_intersection(a.get_bounds_local(), b.get_bounds_local())
 
@@ -40,3 +64,23 @@ func get_edges() -> Array[ScatterEdge]:
 	if b is ScatterRegionValue:
 		result.append_array((b as ScatterRegionValue).get_edges())
 	return result
+
+
+func _sampling_source() -> ScatterShapeValue:
+	var a_direct := a.supports_direct_sampling()
+	var b_direct := b.supports_direct_sampling()
+	if not a_direct and not b_direct:
+		return null
+	if a_direct and not b_direct:
+		return a
+	if b_direct and not a_direct:
+		return b
+	if a.get_intrinsic_dimension() != b.get_intrinsic_dimension():
+		return a if a.get_intrinsic_dimension() < b.get_intrinsic_dimension() else b
+	var measure_a := a.get_intrinsic_measure_local()
+	var measure_b := b.get_intrinsic_measure_local()
+	if measure_a <= 0.0:
+		return b
+	if measure_b <= 0.0:
+		return a
+	return a if measure_a <= measure_b else b

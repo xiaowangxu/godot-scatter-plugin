@@ -11,8 +11,12 @@ static func positive_vec3(value: Vector3) -> Vector3:
 	)
 
 
+static func absolute_vec3(value: Vector3) -> Vector3:
+	return Vector3(absf(value.x), absf(value.y), absf(value.z))
+
+
 static func box_corners(center: Vector3, size: Vector3, rotation_degrees: Vector3) -> Array[Vector3]:
-	var half_size := positive_vec3(size) * 0.5
+	var half_size := absolute_vec3(size) * 0.5
 	var basis := Basis.from_euler(rotation_degrees * PI / 180.0)
 	var result: Array[Vector3] = []
 	for local in [

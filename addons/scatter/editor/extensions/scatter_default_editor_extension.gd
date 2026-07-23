@@ -2,9 +2,6 @@
 class_name ScatterDefaultEditorExtension
 extends ScatterNodeEditorExtension
 
-const PREVIEW_INSTANCE_LIMIT := 2_000
-
-
 func draw_gizmo(context: ScatterNodeEditorContext, sink: ScatterGizmoSink) -> void:
 	if context == null or context.node == null:
 		return
@@ -30,7 +27,7 @@ func draw_gizmo(context: ScatterNodeEditorContext, sink: ScatterGizmoSink) -> vo
 		elif value is ScatterInstances:
 			var lines := PackedVector3Array()
 			var instances := value as ScatterInstances
-			var amount := mini(2000, instances.transforms.size())
+			var amount := mini(ScatterEditorSettings.gizmo_instance_limit(), instances.transforms.size())
 			for index in amount:
 				var transform := instances.transforms[index]
 				var radius := 0.12
@@ -49,7 +46,7 @@ func _selected_values(context: ScatterNodeEditorContext) -> Array[ScatterValue]:
 	if not plan.has_errors():
 		var session := ScatterEvaluationSession.new()
 		var evaluation := ScatterEvaluationContext.create(context.target, context.graph, session)
-		evaluation.maximum_instances = PREVIEW_INSTANCE_LIMIT
+		evaluation.maximum_instances = ScatterEditorSettings.preview_instance_limit()
 		ScatterGraphEvaluator.execute(plan, evaluation)
 		var outputs := session.get_outputs(evaluation, context.node.node_id)
 		if outputs != null:
@@ -61,7 +58,7 @@ func _selected_values(context: ScatterNodeEditorContext) -> Array[ScatterValue]:
 	# Disconnected source nodes can still provide a useful standalone preview.
 	if context.node.get_input_ports().is_empty():
 		var evaluation := ScatterEvaluationContext.create(context.target, context.graph, ScatterEvaluationSession.new())
-		evaluation.maximum_instances = PREVIEW_INSTANCE_LIMIT
+		evaluation.maximum_instances = ScatterEditorSettings.preview_instance_limit()
 		var value := context.node.evaluate_value(evaluation, ScatterNodeInputs.new())
 		if value != null:
 			result.append(value)

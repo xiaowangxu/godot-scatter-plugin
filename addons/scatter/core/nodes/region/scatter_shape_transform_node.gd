@@ -128,6 +128,8 @@ func _geometry_port() -> ScatterPort:
 
 func _type_label() -> String:
 	match geometry_type:
+		ScatterValueTypeRegistry.PLANAR_REGION:
+			return "Planar Region"
 		ScatterValueTypeRegistry.REGION:
 			return "Region"
 		ScatterValueTypeRegistry.REGULAR_REGION:
@@ -140,6 +142,8 @@ func _type_label() -> String:
 
 func _empty_value() -> ScatterValue:
 	match geometry_type:
+		ScatterValueTypeRegistry.PLANAR_REGION:
+			return ScatterPlanarRegion.new()
 		ScatterValueTypeRegistry.REGULAR_REGION:
 			return ScatterBoxRegion.new(Vector3.ZERO, Vector3.ZERO)
 		ScatterValueTypeRegistry.PATH:
@@ -158,6 +162,11 @@ func _transform() -> Transform3D:
 static func _transform_shape(shape: ScatterShapeValue, transform: Transform3D) -> ScatterShapeValue:
 	var frame := shape.get_local_transform()
 	var local_mapping := frame * transform * frame.affine_inverse()
+	if shape is ScatterPlanarRegion:
+		return ScatterTransformedPlanarRegion.new(shape as ScatterPlanarRegion, local_mapping)
+	if shape is ScatterTransformedPlanarRegion:
+		var planar := shape as ScatterTransformedPlanarRegion
+		return ScatterTransformedPlanarRegion.new(planar.source, local_mapping * planar.local_from_source)
 	if shape is ScatterRegularRegionValue:
 		return ScatterTransformedRegularRegion.new(shape as ScatterRegularRegionValue, local_mapping)
 	if shape is ScatterRegionValue:

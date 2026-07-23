@@ -408,6 +408,18 @@ func update_output_counts(output_counts: Dictionary) -> void:
 	update_status()
 
 
+func update_diagnostics(
+		errors: Array[ScatterDiagnostic],
+		warnings: Array[ScatterDiagnostic],
+	) -> void:
+	if _graph_editor == null:
+		return
+	var diagnostics: Array[ScatterDiagnostic] = []
+	diagnostics.append_array(errors)
+	diagnostics.append_array(warnings)
+	_graph_editor.update_diagnostics(diagnostics)
+
+
 func get_graph_for_build(owner: MultiMeshInstance3D) -> ScatterGraph:
 	if owner == target and graph != null:
 		return graph

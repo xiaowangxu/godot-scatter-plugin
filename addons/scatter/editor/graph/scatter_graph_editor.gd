@@ -44,6 +44,7 @@ var _rebuilding_graph := false
 var _structure_reconcile_pending := false
 var _node_structure_signatures: Dictionary = {}
 var _rendered_connections: Dictionary = {}
+var _node_diagnostics: Dictionary = {}
 
 
 func _ready() -> void:
@@ -94,6 +95,7 @@ func configure(
 		p_graph: ScatterGraph,
 		p_undo_redo: EditorUndoRedoManager,
 ) -> void:
+	_node_diagnostics.clear()
 	target = p_target
 	graph = p_graph
 	_undo_redo = p_undo_redo
@@ -102,6 +104,7 @@ func configure(
 	editor_context.graph = graph
 	editor_context.sync_views = sync_views
 	editor_context.reconcile_structure = _queue_structure_reconcile
+	editor_context.model_changed = _model_changed
 	editor_context.graph_changed = _emit_recipe_changed
 	editor_context.build_requested = _emit_build_requested
 	editor_context.undo = ScatterUndoService.new(
@@ -122,6 +125,7 @@ func clear_target() -> void:
 	clear_connections()
 	_rendered_connections.clear()
 	_node_structure_signatures.clear()
+	_node_diagnostics.clear()
 	_clear_node_views()
 
 
@@ -177,6 +181,7 @@ func _create_node_view(node: ScatterNode) -> ScatterNodeView:
 	var view := candidate as ScatterNodeView
 	add_child(view)
 	view.bind_model(node, editor_context)
+	view.set_diagnostics(_node_diagnostics.get(node.node_id, []))
 	view.dragged.connect(_node_dragged.bind(node.node_id))
 	_node_structure_signatures[node.node_id] = view.structure_signature()
 	return view
@@ -342,6 +347,29 @@ func update_output_counts(output_counts: Dictionary) -> void:
 		return
 	editor_context.output_counts = output_counts.duplicate()
 	sync_views()
+
+
+func update_diagnostics(diagnostics: Array) -> void:
+	_node_diagnostics.clear()
+	for diagnostic in diagnostics:
+		if not diagnostic is ScatterDiagnostic or diagnostic.node_id < 0:
+			continue
+		if not _node_diagnostics.has(diagnostic.node_id):
+			_node_diagnostics[diagnostic.node_id] = []
+		(_node_diagnostics[diagnostic.node_id] as Array).append(diagnostic)
+	for child in get_children():
+		if child is ScatterNodeView:
+			var view := child as ScatterNodeView
+			view.set_diagnostics(_node_diagnostics.get(view.model.node_id, []))
+
+
+func clear_diagnostics() -> void:
+	if _node_diagnostics.is_empty():
+		return
+	_node_diagnostics.clear()
+	for child in get_children():
+		if child is ScatterNodeView:
+			(child as ScatterNodeView).set_diagnostics([])
 
 
 func get_view(node_id: int) -> ScatterNodeView:
@@ -681,6 +709,11 @@ func _clear_node_views() -> void:
 
 func _emit_recipe_changed() -> void:
 	recipe_changed.emit()
+
+
+func _model_changed(kind: int) -> void:
+	if kind != ScatterEditorContext.ChangeKind.LAYOUT:
+		clear_diagnostics()
 
 
 func _emit_build_requested() -> void:

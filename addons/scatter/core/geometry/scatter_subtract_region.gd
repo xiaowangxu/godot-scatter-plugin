@@ -21,6 +21,28 @@ func get_local_transform() -> Transform3D:
 	return ScatterRegionValue.resolve_boolean_pivot(pivot_mode, a, b, get_bounds_local())
 
 
+func get_intrinsic_dimension() -> int:
+	return a.get_intrinsic_dimension()
+
+
+func supports_direct_sampling() -> bool:
+	return a.supports_direct_sampling()
+
+
+func supports_neighbor_sampling() -> bool:
+	return false
+
+
+func sample_local(value: float) -> Vector3:
+	if not a.supports_direct_sampling():
+		return Vector3.INF
+	for attempt in 64:
+		var point := a.sample_local(ScatterSampleHash.dimension(value, attempt))
+		if point.is_finite() and not b.contains_local(point):
+			return point
+	return Vector3.INF
+
+
 func get_bounds_local() -> AABB:
 	return a.get_bounds_local()
 

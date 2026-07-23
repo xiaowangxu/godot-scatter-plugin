@@ -191,17 +191,20 @@ Ports are strongly typed. Compatibility is defined by a multiple-parent type reg
 value
 |-- shape
 |   |-- region
-|   |   `-- regular_region
+|   |   |-- regular_region
+|   |   `-- planar_region
 |   `-- path
 |-- direct_sampleable
 |   |-- regular_region
+|   |-- planar_region
 |   `-- path
 `-- instances
 ```
 
 - **Shape** provides local bounds and point containment.
-- **Region** represents a volume-like Shape.
+- **Region** is a containable Shape and may have a 2D or 3D intrinsic sampling domain.
 - **Regular Region** can sample directly and exactly; Box and Sphere are regular regions.
+- **Planar Region** is a true two-dimensional polygon embedded in 3D and sampled uniformly by area.
 - **Path** is a one-dimensional Shape sampled by total arc length.
 - **Instances** contains transforms, colors, and custom data with synchronized array lengths.
 
@@ -210,13 +213,14 @@ Every generated instance transform is stored in **MultiMesh Local** space. Shape
 ## Determinism, diagnostics, and limits
 
 - A graph seed controls deterministic random operations; supported nodes may override it with an independent seed.
-- Box and Sphere use direct uniform sampling.
-- General Shapes, including Boolean results, use deterministic AABB rejection sampling.
-- Volume Poisson uses a deterministic 3D Bridson active-list algorithm.
+- Direct-sampleable Shapes use their intrinsic length, area, or volume domain.
+- Boolean Shapes preserve direct sampling when an operand can provide valid intrinsic-domain proposals.
+- Poisson combines intrinsic-dimension neighbor proposals with global reseeding, so thin Shapes and disconnected components do not collapse.
 - Path sampling uses total arc length rather than equal probability per segment.
 - The graph compiler validates the unique Final Output, ports, value types, variadic order, missing references, and cycles before evaluation.
 - Each reachable node evaluates once per Build through a single-build evaluation cache.
 - Warnings may produce partial output; errors prevent writing to the MultiMesh.
+- Node-scoped diagnostics appear on the corresponding GraphNode; hover for a summary or click to inspect every message.
 - A Build is limited to **1,000,000 instances**. Final Output truncates in connection order and reports a warning.
 - Viewport previews show at most **2,000 instances** per selected Instances node.
 
@@ -249,7 +253,7 @@ Node ports use stable `StringName` IDs. Runtime values are checked against decla
 
 | Category | Nodes |
 | --- | --- |
-| **Geometry** | Box Region, Sphere Region, Path, Paint Region, Shape Transform, Path Tube Region, Path Extrude, Union, Intersection, Subtract |
+| **Geometry** | Box Region, Sphere Region, Path, Path To Planar Region, Paint Region, Shape Transform, Path Tube Region, Path Extrude, Union, Intersection, Subtract |
 | **Placement** | Random Placement, Grid Placement, Poisson Placement, Along Edge Random, Along Edge Even, Along Edge Continuous, Add Single Item, Merge Placement |
 | **Transform** | Edit Transform, Edit Position, Edit Rotation, Edit Scale, Randomize Transforms, Randomize Rotation, Array, Look At, Snap Transforms, Relax Position, Clusterize by Mask, Project On Colliders |
 | **Filter** | Remove Outside, Remove Random |

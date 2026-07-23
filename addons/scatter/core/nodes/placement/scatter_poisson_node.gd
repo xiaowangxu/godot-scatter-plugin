@@ -29,7 +29,7 @@ func supports_seed() -> bool:
 
 func evaluate_value(context: ScatterEvaluationContext, inputs: ScatterNodeInputs) -> ScatterValue:
 	var buffer := input_instances(context, inputs)
-	ScatterCreationOps.append_poisson(
+	var sampling := ScatterCreationOps.append_poisson(
 		buffer,
 		inputs.shape(),
 		radius,
@@ -38,4 +38,11 @@ func evaluate_value(context: ScatterEvaluationContext, inputs: ScatterNodeInputs
 		context.random_for(self),
 		context.maximum_instances,
 	)
+	if sampling.budget_exhausted:
+		context.add_warning(
+			&"poisson_budget_exhausted",
+			node_id,
+			"Poisson sampling exhausted its deterministic attempt budget.",
+			sampling,
+		)
 	return buffer

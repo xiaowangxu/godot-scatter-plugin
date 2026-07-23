@@ -11,6 +11,7 @@ const PaintRegionView := preload("res://addons/scatter/editor/graph/views/scatte
 
 const ENTRIES := [
 	[preload("res://addons/scatter/core/nodes/region/scatter_path_extrude_node.gd"), GenericView],
+	[preload("res://addons/scatter/core/nodes/region/scatter_path_planar_node.gd"), GenericView],
 	[preload("res://addons/scatter/core/nodes/region/scatter_path_tube_node.gd"), GenericView],
 	[preload("res://addons/scatter/core/nodes/region/scatter_shape_transform_node.gd"), GenericView],
 	[preload("res://addons/scatter/core/nodes/output/scatter_final_output_node.gd"), FinalOutputView],

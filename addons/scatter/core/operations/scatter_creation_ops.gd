@@ -17,14 +17,13 @@ static func append_random(
 	var attempts := 0
 	if shape == null or shape.is_empty() or requested == 0:
 		return {"requested": requested, "generated": 0, "attempts": attempts}
-	if shape is ScatterPathValue:
-		for _index in requested:
-			buffer.add_instance(Transform3D(Basis(), (shape as ScatterPathValue).sample_local(rng.randf())))
+	if shape.supports_direct_sampling():
+		var budget := mini(REJECTION_CAP, maxi(256, requested * 32))
+		while buffer.transforms.size() - initial_size < requested and attempts < budget:
+			var point := shape.sample_local(rng.randf())
 			attempts += 1
-	elif shape is ScatterRegularRegionValue:
-		for _index in requested:
-			buffer.add_instance(Transform3D(Basis(), (shape as ScatterRegularRegionValue).sample_local(rng.randf())))
-			attempts += 1
+			if point.is_finite():
+				buffer.add_instance(Transform3D(Basis(), point))
 	else:
 		var bounds := shape.get_bounds_local()
 		var budget := mini(REJECTION_CAP, maxi(256, requested * 32))
@@ -81,36 +80,90 @@ static func append_poisson(
 		max_points: int,
 		rng: RandomNumberGenerator,
 		maximum: int,
-) -> void:
+	) -> Dictionary:
+	var requested := mini(maxi(max_points, 0), maxi(0, maximum - buffer.transforms.size()))
+	var stats := {
+		"requested": requested,
+		"generated": 0,
+		"attempts": 0,
+		"local_attempts": 0,
+		"global_attempts": 0,
+		"budget_exhausted": false,
+		"intrinsic_dimension": shape.get_intrinsic_dimension() if shape != null else 0,
+	}
 	if shape == null or shape.is_empty():
-		return
+		return stats
 	radius = maxf(radius, 0.001)
-	var target_count := mini(maxi(max_points, 0), maxi(0, maximum - buffer.transforms.size()))
+	var target_count := requested
 	if target_count == 0:
-		return
-	if shape is ScatterPathValue:
-		_append_path_poisson(buffer, shape as ScatterPathValue, radius, target_count, rng)
-		buffer.normalize()
-		return
+		return stats
 	var bounds := shape.get_bounds_local()
 	var cell_size := radius / sqrt(3.0)
 	var grid: Dictionary = {}
 	var points: Array[Vector3] = []
 	var active: Array[int] = []
-	var initial := _find_initial(shape, bounds, rng)
+	var attempt_budget := mini(
+		REJECTION_CAP,
+		maxi(2048, target_count * maxi(64, candidates_per_active * 8)),
+	)
+	var global_failure_limit := maxi(256, candidates_per_active * 16)
+	var consecutive_global_failures := 0
+	var initial := Vector3.INF
+	while not initial.is_finite() and stats.attempts < mini(256, attempt_budget):
+		initial = _sample_global(shape, bounds, rng)
+		stats.attempts += 1
+		stats.global_attempts += 1
 	if not initial.is_finite():
-		return
+		return stats
 	points.append(initial)
 	active.append(0)
 	grid[_cell(initial, bounds.position, cell_size)] = 0
-	while not active.is_empty() and points.size() < target_count:
+	while (
+		points.size() < target_count
+		and stats.attempts < attempt_budget
+		and not (
+			(active.is_empty() or not shape.supports_neighbor_sampling())
+			and consecutive_global_failures >= global_failure_limit
+		)
+	):
+		var use_global := (
+			active.is_empty()
+			or not shape.supports_neighbor_sampling()
+			or rng.randf() < 0.15
+		)
+		if use_global:
+			var global_candidate := _sample_global(shape, bounds, rng)
+			stats.attempts += 1
+			stats.global_attempts += 1
+			if not global_candidate.is_finite():
+				consecutive_global_failures += 1
+				continue
+			var global_cell := _cell(global_candidate, bounds.position, cell_size)
+			if not _poisson_cell_valid(global_candidate, global_cell, points, grid, radius):
+				consecutive_global_failures += 1
+				continue
+			points.append(global_candidate)
+			active.append(points.size() - 1)
+			grid[global_cell] = points.size() - 1
+			consecutive_global_failures = 0
+			continue
 		var active_slot := rng.randi_range(0, active.size() - 1)
 		var center := points[active[active_slot]]
 		var accepted := false
 		for _candidate_index in maxi(1, candidates_per_active):
-			var direction := _random_unit_vector(rng)
-			var candidate := center + direction * rng.randf_range(radius, radius * 2.0)
-			if not bounds.has_point(candidate) or not shape.contains_local(candidate):
+			var candidate := shape.sample_neighbor_local(
+				center,
+				radius,
+				radius * 2.0,
+				rng.randf(),
+			)
+			stats.attempts += 1
+			stats.local_attempts += 1
+			if (
+				not candidate.is_finite()
+				or not bounds.has_point(candidate)
+				or not shape.contains_local(candidate)
+			):
 				continue
 			var cell := _cell(candidate, bounds.position, cell_size)
 			if not _poisson_cell_valid(candidate, cell, points, grid, radius):
@@ -119,12 +172,16 @@ static func append_poisson(
 			active.append(points.size() - 1)
 			grid[cell] = points.size() - 1
 			accepted = true
+			consecutive_global_failures = 0
 			break
 		if not accepted:
 			active.remove_at(active_slot)
 	for point in points:
 		buffer.add_instance(Transform3D(Basis(), point))
 	buffer.normalize()
+	stats.generated = points.size()
+	stats.budget_exhausted = stats.attempts >= attempt_budget and points.size() < target_count
+	return stats
 
 
 static func append_path_random(buffer: ScatterInstances, path: ScatterPathValue, count: int, align: bool, rng: RandomNumberGenerator, maximum: int) -> void:
@@ -162,42 +219,15 @@ static func append_single(buffer: ScatterInstances, offset: Vector3, rotation_de
 	buffer.normalize()
 
 
-static func _find_initial(shape: ScatterShapeValue, bounds: AABB, rng: RandomNumberGenerator) -> Vector3:
-	if shape is ScatterPathValue:
-		return (shape as ScatterPathValue).sample_local(rng.randf())
-	if shape is ScatterRegularRegionValue:
-		return (shape as ScatterRegularRegionValue).sample_local(rng.randf())
-	for _attempt in 256:
-		var point := _random_in_bounds(bounds, rng)
-		if shape.contains_local(point):
-			return point
-	return Vector3.INF
-
-
-static func _append_path_poisson(
-		buffer: ScatterInstances,
-		path: ScatterPathValue,
-		radius: float,
-		target_count: int,
+static func _sample_global(
+		shape: ScatterShapeValue,
+		bounds: AABB,
 		rng: RandomNumberGenerator,
-) -> void:
-	if path.get_length_local() <= 0.0:
-		return
-	var points: Array[Vector3] = []
-	var attempts := 0
-	var budget := mini(REJECTION_CAP, maxi(256, target_count * 32))
-	while points.size() < target_count and attempts < budget:
-		var candidate := path.sample_local(rng.randf())
-		attempts += 1
-		var valid := true
-		for point in points:
-			if candidate.distance_squared_to(point) < radius * radius:
-				valid = false
-				break
-		if valid:
-			points.append(candidate)
-	for point in points:
-		buffer.add_instance(Transform3D(Basis(), point))
+	) -> Vector3:
+	if shape.supports_direct_sampling():
+		return shape.sample_local(rng.randf())
+	var point := _random_in_bounds(bounds, rng)
+	return point if shape.contains_local(point) else Vector3.INF
 
 
 static func _random_in_bounds(bounds: AABB, rng: RandomNumberGenerator) -> Vector3:
@@ -206,13 +236,6 @@ static func _random_in_bounds(bounds: AABB, rng: RandomNumberGenerator) -> Vecto
 		rng.randf_range(bounds.position.y, bounds.end.y),
 		rng.randf_range(bounds.position.z, bounds.end.z),
 	)
-
-
-static func _random_unit_vector(rng: RandomNumberGenerator) -> Vector3:
-	var y := rng.randf_range(-1.0, 1.0)
-	var angle := rng.randf() * TAU
-	var planar := sqrt(maxf(0.0, 1.0 - y * y))
-	return Vector3(cos(angle) * planar, y, sin(angle) * planar)
 
 
 static func _cell(point: Vector3, origin: Vector3, cell_size: float) -> Vector3i:

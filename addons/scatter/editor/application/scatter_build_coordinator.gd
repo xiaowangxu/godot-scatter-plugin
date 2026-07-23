@@ -28,6 +28,7 @@ func build(
 	if graph == null:
 		return
 	var request := ScatterBuildRequest.create(target, graph)
+	request.maximum_instances = ScatterEditorSettings.build_instance_limit()
 	scheduler.submit(request, _generation_completed.bind(target, mark_unsaved))
 
 

@@ -13,6 +13,7 @@ var graph: ScatterGraph
 var undo: ScatterUndoService
 var sync_views: Callable
 var reconcile_structure: Callable
+var model_changed: Callable
 var graph_changed: Callable
 var build_requested: Callable
 var output_counts: Dictionary = {}
@@ -37,6 +38,8 @@ func notify_model_changed(kind := ChangeKind.PROPERTY) -> void:
 		reconcile_structure.call()
 	elif sync_views.is_valid():
 		sync_views.call()
+	if model_changed.is_valid():
+		model_changed.call(kind)
 	if graph_changed.is_valid():
 		graph_changed.call()
 	if kind != ChangeKind.LAYOUT and graph != null and graph.auto_rebuild and build_requested.is_valid():

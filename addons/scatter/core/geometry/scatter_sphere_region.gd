@@ -15,6 +15,10 @@ func get_local_transform() -> Transform3D:
 	return Transform3D(Basis.IDENTITY, center)
 
 
+func get_intrinsic_measure_local() -> float:
+	return 4.0 * PI * radius * radius * radius / 3.0
+
+
 func get_bounds_local() -> AABB:
 	return AABB(center - Vector3.ONE * radius, Vector3.ONE * radius * 2.0)
 

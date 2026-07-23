@@ -17,6 +17,26 @@ func get_local_transform() -> Transform3D:
 	return local_from_source * source.get_local_transform()
 
 
+func get_intrinsic_dimension() -> int:
+	return source.get_intrinsic_dimension()
+
+
+func get_intrinsic_measure_local() -> float:
+	return 0.0
+
+
+func supports_direct_sampling() -> bool:
+	return source.supports_direct_sampling()
+
+
+func sample_local(value: float) -> Vector3:
+	return local_from_source * source.sample_local(value)
+
+
+func supports_neighbor_sampling() -> bool:
+	return false
+
+
 func get_bounds_local() -> AABB:
 	var bounds := source.get_bounds_local()
 	if bounds.size.is_zero_approx():

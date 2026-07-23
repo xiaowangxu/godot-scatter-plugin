@@ -18,6 +18,7 @@ const PROPERTY_SUBGROUP_MARGIN_LEFT := 10
 const PROPERTY_GROUP_CORNER_RADIUS := 6
 
 static var _property_section_style_cache: Dictionary[String, StyleBoxFlat] = {}
+static var _titlebar_button_empty_style := StyleBoxEmpty.new()
 
 var model: ScatterNode
 var context: ScatterEditorContext
@@ -25,6 +26,8 @@ var input_port_order: Array[StringName] = []
 var output_port_order: Array[StringName] = []
 var _bindings: Array[Dictionary] = []
 var _syncing := false
+var _diagnostic_button: MenuButton
+var _diagnostic_popup: PopupMenu
 
 
 func _enter_tree() -> void:
@@ -39,6 +42,7 @@ func bind_model(p_model: ScatterNode, p_context: ScatterEditorContext) -> void:
 	tooltip_text = tr(model.get_description())
 	position_offset = model.graph_position
 	custom_minimum_size.x = minimum_width()
+	_build_diagnostic_ui()
 	if model.can_disable():
 		var enabled := CheckBox.new()
 		enabled.tooltip_text = tr("Enable or disable this node")
@@ -106,6 +110,58 @@ func sync_from_model() -> void:
 
 func update_runtime_stats() -> void:
 	pass
+
+
+func set_diagnostics(diagnostics: Array) -> void:
+	if _diagnostic_button == null:
+		return
+	var ordered: Array[ScatterDiagnostic] = []
+	for diagnostic in diagnostics:
+		if diagnostic is ScatterDiagnostic and diagnostic.severity == ScatterDiagnostic.Severity.ERROR:
+			ordered.append(diagnostic)
+	for diagnostic in diagnostics:
+		if diagnostic is ScatterDiagnostic and diagnostic.severity == ScatterDiagnostic.Severity.WARNING:
+			ordered.append(diagnostic)
+	if ordered.is_empty():
+		_diagnostic_button.visible = false
+		_diagnostic_button.tooltip_text = ""
+		_diagnostic_popup.clear()
+		return
+	var error_count := 0
+	var warning_count := 0
+	var lines := PackedStringArray()
+	for diagnostic in ordered:
+		if diagnostic.severity == ScatterDiagnostic.Severity.ERROR:
+			error_count += 1
+			lines.append("%s: %s" % [tr("Error"), tr(diagnostic.message)])
+		else:
+			warning_count += 1
+			lines.append("%s: %s" % [tr("Warning"), tr(diagnostic.message)])
+	var has_error := error_count > 0
+	var count := error_count + warning_count
+	var icon_name := &"StatusError" if has_error else &"StatusWarning"
+	var has_icon := _diagnostic_button.has_theme_icon(icon_name, &"EditorIcons")
+	_diagnostic_button.icon = (
+		_diagnostic_button.get_theme_icon(icon_name, &"EditorIcons")
+		if has_icon
+		else null
+	)
+	_diagnostic_button.text = (
+		str(count)
+		if has_icon
+		else "%s %d" % ["\u00d7" if has_error else "!", count]
+	)
+	_diagnostic_button.tooltip_text = "\n".join(lines)
+	_diagnostic_button.add_theme_color_override(
+		&"font_color",
+		Color("ff6b6b") if has_error else Color("f2c94c"),
+	)
+	_diagnostic_button.add_theme_color_override(
+		&"font_hover_color",
+		Color("ff8d8d") if has_error else Color("ffe082"),
+	)
+	_populate_diagnostic_menu(ordered)
+	_diagnostic_button.visible = true
 
 
 func structure_signature() -> Array:
@@ -189,6 +245,55 @@ func _add_content_padding(control_name: StringName) -> void:
 	spacer.custom_minimum_size.y = CONTENT_PADDING * maxf(get_theme_default_base_scale(), 1.0)
 	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(spacer)
+
+
+func _build_diagnostic_ui() -> void:
+	if _diagnostic_button != null:
+		return
+	_diagnostic_button = MenuButton.new()
+	_diagnostic_button.name = &"DiagnosticsButton"
+	_diagnostic_button.flat = true
+	_diagnostic_button.focus_mode = Control.FOCUS_NONE
+	_diagnostic_button.visible = false
+	_diagnostic_button.switch_on_hover = true
+	_diagnostic_button.custom_maximum_size.y = 36
+	for style_name in [&"normal", &"hover", &"pressed", &"focus", &"disabled"]:
+		_diagnostic_button.add_theme_stylebox_override(
+			style_name,
+			_titlebar_button_empty_style,
+		)
+	_diagnostic_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	get_titlebar_hbox().add_child(_diagnostic_button)
+	_diagnostic_popup = _diagnostic_button.get_popup()
+	_diagnostic_popup.name = &"DiagnosticsPopup"
+
+
+func _populate_diagnostic_menu(diagnostics: Array[ScatterDiagnostic]) -> void:
+	_diagnostic_popup.clear()
+	var current_severity := -1
+	for diagnostic in diagnostics:
+		var icon_name := (
+			&"StatusError"
+			if diagnostic.severity == ScatterDiagnostic.Severity.ERROR
+			else &"StatusWarning"
+		)
+		var icon := (
+			_diagnostic_button.get_theme_icon(icon_name, &"EditorIcons")
+			if _diagnostic_button.has_theme_icon(icon_name, &"EditorIcons")
+			else null
+		)
+		if icon != null:
+			_diagnostic_popup.add_icon_item(icon, tr(diagnostic.message))
+		else:
+			_diagnostic_popup.add_item(tr(diagnostic.message))
+		var item_index := _diagnostic_popup.item_count - 1
+		_diagnostic_popup.set_item_tooltip(
+			item_index,
+			"%s: %s" % [
+				tr("Code"),
+				diagnostic.code,
+			],
+		)
 
 
 func add_bool_property(property: StringName, label_text: String, tooltip := "") -> CheckBox:

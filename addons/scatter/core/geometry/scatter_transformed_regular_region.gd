@@ -17,6 +17,20 @@ func get_local_transform() -> Transform3D:
 	return local_from_authored * source.get_local_transform()
 
 
+func get_intrinsic_dimension() -> int:
+	return source.get_intrinsic_dimension()
+
+
+func get_intrinsic_measure_local() -> float:
+	if source.get_intrinsic_dimension() == 3:
+		return source.get_intrinsic_measure_local() * absf(local_from_authored.basis.determinant())
+	return 0.0
+
+
+func supports_neighbor_sampling() -> bool:
+	return false
+
+
 func get_bounds_local() -> AABB:
 	var bounds := source.get_bounds_local()
 	var corners := [

@@ -6,6 +6,7 @@ const VALUE := &"value"
 const SHAPE := &"shape"
 const REGION := &"region"
 const REGULAR_REGION := &"regular_region"
+const PLANAR_REGION := &"planar_region"
 const PATH := &"path"
 const DIRECT_SAMPLEABLE := &"direct_sampleable"
 const INSTANCES := &"instances"
@@ -28,6 +29,7 @@ static func ensure_builtins() -> void:
 	_register_raw(REGION, [SHAPE], Color("55b8a6"))
 	_register_raw(DIRECT_SAMPLEABLE, [VALUE], Color("62c6bb"))
 	_register_raw(REGULAR_REGION, [REGION, DIRECT_SAMPLEABLE], Color("55b8a6"))
+	_register_raw(PLANAR_REGION, [REGION, DIRECT_SAMPLEABLE], Color("4db9a7"))
 	_register_raw(PATH, [SHAPE, DIRECT_SAMPLEABLE], Color("63a7dc"))
 	_register_raw(INSTANCES, [VALUE], Color("b889e8"))
 	# Session-visible wildcard used by adaptive geometry ports. It must never
@@ -102,7 +104,7 @@ static func is_assignable(actual: StringName, expected: StringName) -> bool:
 
 
 static func is_geometry_value_type(type_id: StringName) -> bool:
-	return type_id in [SHAPE, REGION, REGULAR_REGION, PATH]
+	return type_id in [SHAPE, REGION, REGULAR_REGION, PLANAR_REGION, PATH]
 
 
 static func is_visual_connection_valid(actual: StringName, expected: StringName) -> bool:
@@ -132,4 +134,4 @@ static func registered_types() -> Array[StringName]:
 
 
 static func _is_builtin(type_id: StringName) -> bool:
-	return type_id in [VALUE, SHAPE, REGION, REGULAR_REGION, PATH, DIRECT_SAMPLEABLE, INSTANCES, DYNAMIC_GEOMETRY]
+	return type_id in [VALUE, SHAPE, REGION, REGULAR_REGION, PLANAR_REGION, PATH, DIRECT_SAMPLEABLE, INSTANCES, DYNAMIC_GEOMETRY]
